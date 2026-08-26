@@ -1,0 +1,3733 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atrapa las frutas — Emma P</title>
+
+  <!-- ==========================================================
+       ATRAPA LAS FRUTAS
+       Hecho por Emma P
+       Un juego escrito en HTML, CSS y JavaScript, desde cero.
+       ========================================================== -->
+
+  <!-- Una fuente redondeada de videojuego. Si no hay internet, el
+       navegador usa la primera de la lista que si tenga instalada. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap"
+        rel="stylesheet">
+
+  <style>
+    body {
+      background: #0a0a1c;
+      color: white;
+      font-family: "Baloo 2", "Trebuchet MS", Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 10px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    h1 { font-size: 24px; margin: 6px 0 2px; letter-spacing: 1px; }
+
+    /* La firma de la autora */
+    .firma {
+      font-size: 12px;
+      font-weight: bold;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #ffd93d;
+      margin: 0 0 12px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+    }
+
+    canvas {
+      background: #0b1026;
+      border: 4px solid #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+      max-width: 100%;
+      height: auto;
+      touch-action: none;
+    }
+    .ayuda { font-size: 13px; color: #9fb0d0; text-align: center; margin: 8px; }
+  </style>
+</head>
+<body>
+
+  <h1>Atrapa las frutas</h1>
+  <p class="firma">Hecho por Emma P</p>
+
+  <canvas id="pantalla" width="480" height="600"></canvas>
+  <p class="ayuda">
+    Jugadora 1: &larr; &rarr; &nbsp;·&nbsp; Jugadora 2: A y D &nbsp;·&nbsp; dedo/ratón<br>
+    ESPACIO empezar &nbsp;|&nbsp; T tienda &nbsp;|&nbsp; P pausa &nbsp;|&nbsp; M música
+  </p>
+
+  <script>
+    // ==========================================
+    //  1. PREPARAR EL LIENZO
+    // ==========================================
+    const pantalla = document.getElementById("pantalla");
+    const pincel   = pantalla.getContext("2d");
+
+    const SUELO_Y = 574;
+
+    // La fuente de todo el juego, en un solo sitio.
+    // El canvas necesita la lista completa, igual que el CSS.
+    const FUENTE = "'Baloo 2', 'Trebuchet MS', Verdana, sans-serif";
+
+
+    // ==========================================
+    //  2. AJUSTES   <-- TOCA AQUI PARA CAMBIAR EL JUEGO
+    // ==========================================
+
+    const AJUSTES = {
+      cestaAncho:            130,
+      cestaAlto:             45,
+      cestaVelocidad:        9,
+
+      frutaVelocidadMinima:  1.4,
+      frutaVelocidadExtra:   1.1,
+      frutaRadio:            18,
+      generosidad:           10,
+      fotogramasEntreFrutas: 50,
+
+      vidasIniciales:        3,
+      vidasMaximas:          5,
+
+      // --- Modo contrarreloj ---
+      segundosContrarreloj:  60,
+      segundosQueQuitaBomba:  5,
+      segundosQueDaCorazon:   5,
+
+      // --- Bombas: aparecen antes en contrarreloj, que dura poco ---
+      puntosParaBombas:            50,
+      puntosParaBombasContrarreloj: 15,
+      probabilidadBomba:           0.26,
+
+      probabilidadEstrella:  0.07,
+      puntosEstrella:        5,
+      probabilidadCorazon:   0.05,
+      probabilidadMoneda:    0.07,
+
+      // --- El aspecto de las cosas que caen ---
+      // true  = emojis (los de siempre)
+      // false = las formas dibujadas a mano que hay mas abajo
+      usarEmojis:            true,
+
+      // --- Poder: iman ---
+      probabilidadIman:      0.05,
+      duracionIman:          300,   // 5 segundos
+      fuerzaIman:            0.05,  // cuanto tiran por paso
+
+      // --- Mundos ---
+      puntosPorMundo:        30,    // cada 30 puntos, mundo nuevo
+      pasosDeTransicion:     90,    // 1,5 s de cambio suave
+
+      // --- Dia y noche ---
+      pasosPorDia:         3600,    // un dia completo dura 60 segundos
+      fuerzaDeLaNoche:      0.68,   // cuanto oscurece (1 seria negro total)
+
+      // --- Dificultad ---
+      puntosPorNivel:        20,    // cada 20 puntos, todo cae mas rapido
+      subidaPorNivel:        0.10,  // un 10% mas rapido en cada nivel
+      nivelMaximo:           10,    // tope: el doble de rapido, no mas
+
+      // --- Monedas ---
+      puntosPorMoneda:       10,    // al terminar: 1 moneda por cada 10 puntos
+
+      volumen:               0.06,
+      volumenMusica:         0.022,
+      musica:                true
+    };
+
+
+    // ==========================================
+    //  3. LOS MUNDOS
+    // ==========================================
+    // Cada mundo es una FICHA de datos: sus colores y sus objetos.
+    // Ningun mundo tiene codigo propio. Para inventar un mundo nuevo
+    // solo hay que anadir una ficha mas a esta lista.
+
+    // El color al que tira TODO cuando se hace de noche.
+    // Es el mismo para los siete mundos: asi la noche une el juego entero.
+    const NOCHE = [10, 13, 36];
+
+    const MUNDOS = [
+      {
+        nombre: "EL CAMPO",  icono: "🌳",
+        cieloArriba: [ 82, 168, 226], cieloAbajo: [193, 233, 246],
+        colinaLejos: [116, 178, 122], colinaCerca: [ 96, 162, 104],
+        suelo:       [104, 176,  88], sueloClaro:  [140, 205, 110],
+        detalle:     [ 70, 140,  62],
+        sol: 1, estrellas: 0, planeta: 0, nubes: 1,
+        adornos: ["#ff6b9d", "#ffd93d", "#c77dff", "#ffffff"],
+
+        // Su musica: alegre y saltarina
+        melodia: [392, 523, 440, 392,  330, 392, 440,   0,
+                  392, 523, 587, 523,  440, 392, 330,   0,
+                  330, 392, 440, 523,  587, 523, 440,   0,
+                  392, 330, 294, 330,  392, 440,   0,   0],
+        bajo:   [131, 131, 165, 165, 196, 196, 165, 131],
+        ritmo:  13,
+
+        objetos: [
+          { emoji: "🍎", color: "#e8453c", forma: "esfera", hoja: true, tallo: true },
+          { emoji: "🍊", color: "#f79420", forma: "esfera", puntos: true },
+          { emoji: "🍇", color: "#9b5de5", forma: "racimo", hoja: true },
+          { emoji: "🍌", color: "#ffd93d", forma: "medialuna" },
+          { emoji: "🍐", color: "#c5d86d", forma: "gota", hoja: true, tallo: true },
+          { emoji: "🍉", color: "#f26c6c", forma: "porcion", corteza: "#4f9c36" },
+          { emoji: "🍋", color: "#fff275", forma: "ovalo", ancho: 0.62 },
+          { emoji: "🍒", color: "#d90429", forma: "esfera", tallo: true },
+          { emoji: "🍓", color: "#f0384f" },
+          { emoji: "🍑", color: "#ff9f7a" },
+          { emoji: "🥝", color: "#7cb518" },
+          { emoji: "🍍", color: "#f6bd60" },
+          { emoji: "🥭", color: "#ff8c42" },
+          { emoji: "🫐", color: "#6a7fdb" },
+          { emoji: "🥥", color: "#e6d3b3" },
+          { emoji: "🍅", color: "#ef3b2c" }
+        ]
+      },
+      {
+        nombre: "LA JUNGLA",  icono: "🌴",
+        cieloArriba: [ 62, 128, 104], cieloAbajo: [176, 216, 164],
+        colinaLejos: [ 42, 100,  70], colinaCerca: [ 56, 124,  82],
+        suelo:       [ 86, 114,  58], sueloClaro:  [122, 152,  80],
+        detalle:     [ 44,  84,  42],
+        sol: 0.55, estrellas: 0, planeta: 0, nubes: 1,
+        adornos: ["#ff6b9d", "#ffd93d", "#7ee081", "#ffffff"],
+
+        // Su musica: ritmica y con marcha, como tambores
+        melodia: [392, 440, 523, 440,  392, 330, 294,   0,
+                  392, 440, 587, 523,  440, 392, 330,   0,
+                  294, 330, 392, 440,  523, 587, 523,   0,
+                  440, 392, 330, 294,  330, 392,   0,   0],
+        bajo:   [147, 147, 110, 110, 131, 131, 147, 110],
+        ritmo:  11,
+
+        objetos: [
+          { emoji: "🐒", color: "#a06a3f" },
+          { emoji: "🦜", color: "#ff595e" },
+          { emoji: "🐍", color: "#8ac926" },
+          { emoji: "🦋", color: "#6a7fdb" },
+          { emoji: "🌴", color: "#2a9d8f" },
+          { emoji: "🐸", color: "#7ee081" },
+          { emoji: "🦎", color: "#5cb85c" },
+          { emoji: "🦁", color: "#f6bd60" },
+          { emoji: "🐆", color: "#ffb703" },
+          { emoji: "🕷️", color: "#5a4a52" },
+          { emoji: "🌿", color: "#4f9c36" },
+          { emoji: "🍃", color: "#9fd356" },
+          { emoji: "🪲", color: "#7cb518" },
+          { emoji: "🦥", color: "#c58940" }
+        ]
+      },
+      {
+        nombre: "LA PLAYA",  icono: "🏖️",
+        cieloArriba: [ 66, 190, 232], cieloAbajo: [255, 233, 196],
+        colinaLejos: [232, 205, 156], colinaCerca: [243, 219, 172],
+        suelo:       [240, 217, 168], sueloClaro:  [252, 236, 198],
+        detalle:     [212, 180, 126],
+        sol: 1, estrellas: 0, planeta: 0, nubes: 1,
+        adornos: ["#ff8fb1", "#7fd8ff", "#ffe066", "#ffffff"],
+
+        // Su musica: tranquila, con muchos silencios, como las olas
+        melodia: [523,   0, 659,   0,  587,   0, 440,   0,
+                  392,   0, 440,   0,  523,   0,   0,   0,
+                  659,   0, 784,   0,  659,   0, 587,   0,
+                  523,   0, 440,   0,  392,   0,   0,   0],
+        bajo:   [165, 165, 131, 131, 196, 196, 147, 147],
+        ritmo:  16,
+
+        objetos: [
+          { emoji: "🐚", color: "#ffd9c4", forma: "concha" },
+          { emoji: "🏐", color: "#f2f2f2", forma: "esfera", rayas: "#ef476f" },
+          { emoji: "🥥", color: "#8b5e3c", forma: "esfera", puntos: true },
+          { emoji: "🦀", color: "#f4623a" },
+          { emoji: "🍦", color: "#fff2d6" },
+          { emoji: "🌺", color: "#ff5d8f" },
+          { emoji: "🩴", color: "#4ecdc4" },
+          { emoji: "🍹", color: "#ffb703" },
+          { emoji: "⛱️", color: "#ff6b6b" },
+          { emoji: "🕶️", color: "#3c3a52" },
+          { emoji: "🪁", color: "#c77dff" },
+          { emoji: "🏄", color: "#ffb703" }
+        ]
+      },
+      {
+        // Este mundo esta DEBAJO del agua: el "cielo" es el mar, y
+        // cuanto mas abajo, mas oscuro. Al reves que un cielo normal.
+        nombre: "EL MAR",  icono: "🌊",
+        cieloArriba: [ 96, 186, 218], cieloAbajo: [ 20,  74, 122],
+        colinaLejos: [ 28,  84, 118], colinaCerca: [ 38, 108, 144],
+        suelo:       [216, 198, 152], sueloClaro:  [238, 222, 182],
+        detalle:     [186, 166, 124],
+        sol: 0.30, estrellas: 0, planeta: 0, nubes: 0,   // bajo el agua no hay nubes
+        adornos: ["#ffb703", "#7fd8ff", "#ff8fb1", "#ffffff"],
+
+        // Su musica: lenta y profunda, flotando
+        melodia: [262,   0, 330,   0,  392,   0, 330,   0,
+                  294,   0, 392,   0,  440,   0,   0,   0,
+                  523,   0, 440,   0,  392,   0, 330,   0,
+                  294,   0, 262,   0,  294,   0,   0,   0],
+        bajo:   [ 98,  98, 131, 131, 110, 110, 131,  98],
+        ritmo:  18,
+
+        objetos: [
+          { emoji: "🐟", color: "#4cc9f0", forma: "pez" },
+          { emoji: "🐠", color: "#ffa62b", forma: "pez" },
+          { emoji: "🐡", color: "#f9844a", forma: "esfera", puntos: true },
+          { emoji: "🦈", color: "#8d99ae" },
+          { emoji: "🐋", color: "#457b9d" },
+          { emoji: "🐬", color: "#9bf6ff" },
+          { emoji: "🦐", color: "#ff7b6b" },
+          { emoji: "🦞", color: "#e63946" },
+          { emoji: "🦑", color: "#ef7b91" },
+          { emoji: "🐙", color: "#c1436d" },
+          { emoji: "🐢", color: "#8ac926" },
+          { emoji: "🐌", color: "#c58940" },
+          { emoji: "🪼", color: "#e0aaff" },
+          { emoji: "🐳", color: "#5390d9" }
+        ]
+      },
+      {
+        nombre: "LA NIEVE",  icono: "❄️",
+        cieloArriba: [136, 173, 205], cieloAbajo: [231, 243, 255],
+        colinaLejos: [198, 219, 236], colinaCerca: [221, 236, 249],
+        suelo:       [240, 248, 255], sueloClaro:  [255, 255, 255],
+        detalle:     [180, 205, 226],
+        sol: 0.45, estrellas: 0.12, planeta: 0, nubes: 1,
+        adornos: ["#bde0fe", "#ffffff", "#a2d2ff", "#ffffff"],
+
+        // Su musica: lenta y aguda, como campanitas de cristal
+        melodia: [784,   0, 880,   0, 1047,   0, 880,   0,
+                  784,   0, 659,   0,  587,   0,   0,   0,
+                  880,   0,1047,   0, 1175,   0,1047,   0,
+                  880,   0, 784,   0,  659,   0,   0,   0],
+        bajo:   [147, 147, 165, 165, 196, 196, 175, 147],
+        ritmo:  20,
+
+        objetos: [
+          { emoji: "❄️", color: "#cdeaff", forma: "copo" },
+          { emoji: "⛄", color: "#ffffff", forma: "muneco" },
+          { emoji: "🤍", color: "#eaf6ff", forma: "esfera" },
+          { emoji: "🧣", color: "#e63946", forma: "esfera", rayas: "#ffffff" },
+          { emoji: "🌰", color: "#a06a3f", forma: "ovalo", puntos: true, ancho: 0.62 },
+          { emoji: "✨", color: "#ffe066", forma: "estrella", puntas: 4, gordura: 0.32 },
+          { emoji: "🧤", color: "#457b9d" },
+          { emoji: "🎿", color: "#ffb703" },
+          { emoji: "🍧", color: "#ffc8dd" },
+          { emoji: "🐧", color: "#adb5bd" },
+          { emoji: "🦌", color: "#b07d62" },
+          { emoji: "🎄", color: "#2a9d8f" },
+          { emoji: "🏔️", color: "#dee2e6" },
+          { emoji: "🔔", color: "#ffd60a" }
+        ]
+      },
+      {
+        nombre: "MARTE",  icono: "🚀",
+        cieloArriba: [ 10,   5,  32], cieloAbajo: [ 62,  24,  60],
+        colinaLejos: [ 92,  44,  48], colinaCerca: [124,  60,  52],
+        suelo:       [156,  76,  52], sueloClaro:  [190, 104,  70],
+        detalle:     [116,  54,  40],
+        sol: 0, estrellas: 1, planeta: 1, nubes: 0,   // en Marte hay planeta
+        adornos: ["#ffb703", "#e0aaff", "#ff6b6b", "#ffffff"],
+
+        // Su musica: en escala MENOR. Las mismas cinco notas de siempre,
+        // pero empezando en otro sitio: suena misteriosa en vez de alegre.
+        melodia: [440, 523, 392, 440,  330, 392, 294,   0,
+                  440, 523, 587, 523,  440, 392, 330,   0,
+                  294, 330, 392, 440,  523, 440, 392,   0,
+                  330, 294, 262, 294,  330, 392,   0,   0],
+        bajo:   [110, 110, 131, 131, 147, 147, 131, 110],
+        ritmo:  12,
+
+        objetos: [
+          { emoji: "🚀", color: "#ff595e", forma: "cohete" },
+          { emoji: "🛸", color: "#9bf6ff", forma: "nave" },
+          { emoji: "🪐", color: "#ffb703", forma: "anillado", anillo: "#ffe3b0" },
+          { emoji: "🌑", color: "#8d99ae", forma: "esfera", puntos: true },
+          { emoji: "🌕", color: "#fff3b0", forma: "estrella", puntas: 4, gordura: 0.28 },
+          { emoji: "☄️", color: "#ff924c", forma: "ovalo", puntos: true, ancho: 0.78 },
+          { emoji: "👽", color: "#8ac926", forma: "esfera", puntos: true },
+          { emoji: "🌌", color: "#7b2cbf", forma: "anillado", anillo: "#c9a8ff" },
+          { emoji: "🔭", color: "#a0c4ff" },
+          { emoji: "🤖", color: "#bdb2ff" },
+          { emoji: "🛰️", color: "#caf0f8" },
+          { emoji: "🌠", color: "#ffd6ff" },
+          { emoji: "🧑‍🚀", color: "#e9edc9" },
+          { emoji: "🌍", color: "#4cc9f0" }
+        ]
+      },
+      {
+        nombre: "MUNDO DE DULCE",  icono: "🍭",
+        cieloArriba: [255, 150, 205], cieloAbajo: [255, 231, 244],
+        colinaLejos: [255, 135, 195], colinaCerca: [255, 168, 213],
+        suelo:       [255, 209, 232], sueloClaro:  [255, 232, 244],
+        detalle:     [255, 111, 181],
+        sol: 1, estrellas: 0.25, planeta: 0, nubes: 1,
+        adornos: ["#ffffff", "#fff275", "#c77dff", "#ff8fb1"],
+
+        // Su musica: rapida y juguetona, la mas movida de las cinco
+        melodia: [659, 784, 880, 784,  659, 587, 523, 587,
+                  659, 880,1047, 880,  784, 659, 587,   0,
+                  523, 659, 784, 880, 1047, 880, 784, 659,
+                  587, 523, 587, 659,  784, 659,   0,   0],
+        bajo:   [175, 175, 220, 220, 262, 262, 220, 175],
+        ritmo:  10,
+
+        objetos: [
+          { emoji: "🍬", color: "#ff70a6", forma: "caramelo" },
+          { emoji: "🍭", color: "#fff0f6", forma: "esfera", espiral: "#ff5d8f" },
+          { emoji: "🍩", color: "#d99a5b", forma: "donut", glaseado: "#ff9ec7" },
+          { emoji: "🍪", color: "#c98b52", forma: "esfera", puntos: true },
+          { emoji: "🍿", color: "#7ee081", forma: "ovalo", ancho: 0.78 },
+          { emoji: "🍫", color: "#7f5539", forma: "donut", glaseado: "#5c3a24" },
+          { emoji: "🧁", color: "#ffd670" },
+          { emoji: "🎂", color: "#ffafcc" },
+          { emoji: "🍮", color: "#ffdda1" },
+          { emoji: "🥧", color: "#e6ccb2" },
+          { emoji: "🍡", color: "#ffc2d1" },
+          { emoji: "🧇", color: "#dda15e" },
+          { emoji: "🍰", color: "#ffe5ec" },
+          { emoji: "🍧", color: "#ffc8dd" }
+        ]
+      }
+    ];
+
+
+    // ==========================================
+    //  4. LAS MEJORAS DE LA TIENDA
+    // ==========================================
+    // Tambien son datos: la tienda se dibuja SOLA a partir de esta lista.
+
+    const MEJORAS = [
+      { clave: "ancho",     icono: "🧺", nombre: "Cesta más ancha",
+        efecto: "+18 de ancho",       max: 3, precios: [ 8, 18, 32] },
+      { clave: "velocidad", icono: "👟", nombre: "Cesta más rápida",
+        efecto: "+2 de velocidad",    max: 3, precios: [ 8, 18, 32] },
+      { clave: "vidas",     icono: "❤️", nombre: "Vida extra",
+        efecto: "+1 vida al empezar", max: 2, precios: [20, 40] },
+      { clave: "iman",      icono: "🧲", nombre: "Imán más largo",
+        efecto: "+2 segundos",        max: 2, precios: [14, 28] }
+    ];
+
+
+    // ==========================================
+    //  5. LAS JUGADORAS
+    // ==========================================
+    // Antes habia una cesta, unos puntos y unas vidas sueltos. Con dos
+    // jugadoras eso ya no vale: cada una necesita SUS cosas. Asi que
+    // hacemos una lista de jugadoras, cada una con su ficha completa.
+
+    function crearJugadora(numero, teclaIzq, teclaDer, colores) {
+      return {
+        numero: numero,
+        teclaIzq: teclaIzq,      // una lista, para admitir "a" y "A"
+        teclaDer: teclaDer,
+        colores: colores,
+
+        x: 200,
+        y: SUELO_Y - AJUSTES.cestaAlto - 1,
+        ancho: AJUSTES.cestaAncho,
+        alto:  AJUSTES.cestaAlto,
+        velocidad: AJUSTES.cestaVelocidad,
+
+        rebote: 0,
+        xAnterior: 200,
+        inclinacion: 0,
+
+        puntos: 0,
+        vidas: AJUSTES.vidasIniciales,
+        viva: true,
+
+        efectoIman: 0
+      };
+    }
+
+    // ==========================================
+    //  LAS CESTAS DE LA TIENDA
+    // ==========================================
+    // Cada cesta es solo una paleta de colores. La funcion que dibuja la
+    // cesta es SIEMPRE la misma: cambian los colores, no el dibujo.
+
+    function paletaCesta(osc, cla, borde, bordeOsc, asa, brillo, etiqueta) {
+      return { osc: osc, cla: cla, borde: borde, bordeOsc: bordeOsc,
+               asa: asa, brillo: brillo, etiqueta: etiqueta };
+    }
+
+    const MADERA = paletaCesta("#a9763c", "#dda863", "#a86b30", "#6f4118",
+                               "#8a5a2b", "rgba(255,226,170,0.55)", "#ffd93d");
+
+    const MIMBRE_AZUL = paletaCesta("#4f5aa8", "#8d97e0", "#5460ad", "#2f3672",
+                                    "#414a91", "rgba(205,212,255,0.6)", "#9bf6ff");
+
+    const CESTAS = [
+      { clave: "mimbre", nombre: "Mimbre",  precio:  0, colores: MADERA },
+      { clave: "azul",   nombre: "Azul",    precio:  0, colores: MIMBRE_AZUL },
+      { clave: "rosa",   nombre: "Rosa",    precio: 10,
+        colores: paletaCesta("#c4457a", "#ff8fc0", "#c94e84", "#7d2049",
+                             "#a83a68", "rgba(255,210,235,0.6)", "#ff9ecf") },
+      { clave: "menta",  nombre: "Menta",   precio: 10,
+        colores: paletaCesta("#2f8f83", "#7ee0d0", "#37a094", "#1a5e56",
+                             "#28796f", "rgba(200,255,245,0.6)", "#8ff0e0") },
+      { clave: "morada", nombre: "Morada",  precio: 18,
+        colores: paletaCesta("#6a3fa8", "#b78de8", "#764aba", "#3f2270",
+                             "#5b3494", "rgba(230,210,255,0.6)", "#c9a8ff") },
+      { clave: "oro",    nombre: "Oro",     precio: 35,
+        colores: paletaCesta("#b07d16", "#ffdd66", "#c08c1c", "#75500a",
+                             "#96690f", "rgba(255,250,200,0.75)", "#ffe066") },
+      { clave: "noche",  nombre: "Noche",   precio: 45,
+        colores: paletaCesta("#2a2b3d", "#5c5f80", "#33344a", "#14151f",
+                             "#22232f", "rgba(180,190,230,0.55)", "#a0a8d0") }
+    ];
+
+    function cestaPorClave(clave) {
+      for (const c of CESTAS) {
+        if (c.clave === clave) return c;
+      }
+      return CESTAS[0];        // si la clave es rara, la de mimbre
+    }
+
+    const jugadoras = [
+      crearJugadora(1, ["ArrowLeft"], ["ArrowRight"], MADERA),
+      crearJugadora(2, ["a", "A"],    ["d", "D"],     MIMBRE_AZUL)
+    ];
+
+    let numJugadoras = 1;
+
+    // Solo las jugadoras que estan en la partida
+    function enJuego() {
+      return jugadoras.slice(0, numJugadoras);
+    }
+
+    function pulsada(listaDeTeclas) {
+      for (const t of listaDeTeclas) {
+        if (teclas[t]) return true;
+      }
+      return false;
+    }
+
+
+    // ==========================================
+    //  6. EL ESTADO DEL JUEGO
+    // ==========================================
+
+    let cosas      = [];
+    let particulas = [];
+    let avisos     = [];
+
+    let contadorFotogramas = 0;
+    let reloj  = 0;
+
+    let estado = "inicio";   // inicio | ayuda | tienda | jugando | pausa | perdido
+    let modo   = "clasico";  // clasico | contrarreloj | dos
+
+    let tiempoRestante = 0;
+
+    let sacudida = 0;
+    let flash    = 0;
+
+    let bombasActivadas = 0;
+    let yaAvisadoBombas = false;
+
+    // --- Mundos ---
+    let mundoActual   = 0;
+    let mundoAnterior = 0;
+    let transicion    = 1;   // 0 = aun en el anterior, 1 = ya en el nuevo
+    let cartelMundo   = 0;
+
+    // --- Dificultad ---
+    let nivelVelocidad  = 0;   // sube uno cada 20 puntos
+    let cartelVelocidad = 0;   // fotogramas que dura el aviso
+
+    // --- El reloj del dia y la noche ---
+    // Es un reloj aparte: solo avanza mientras juegas de verdad, asi que
+    // en pausa el sol se queda quieto donde estaba.
+    let relojDia = 0;
+
+    // --- Cosas que se guardan en el ordenador ---
+    let records = { clasico: 0, contrarreloj: 0, dos: 0 };
+    let monedas = 0;
+    let mejoras = { ancho: 0, velocidad: 0, vidas: 0, iman: 0 };
+
+    // Las cestas: cuales tienes y cual llevas puesta
+    let cestasCompradas = ["mimbre", "azul"];   // las dos primeras, de regalo
+    let cestaElegida    = "mimbre";
+
+    let nuevoRecord = false;
+    let monedasGanadas = 0;
+    let pasoMelodia = 0;
+
+    // --- Menus ---
+    let filaTienda = 0;      // 0..3 mejoras, 4 = la fila de las cestas
+    let cursorCesta = 0;     // en que cesta esta el cursor
+    let mensajeTienda = "";
+    let mensajeTiendaTiempo = 0;
+
+
+    // ==========================================
+    //  7. LOS ADORNOS DEL DECORADO
+    // ==========================================
+
+    const estrellasFondo = [];
+    for (let i = 0; i < 90; i++) {
+      estrellasFondo.push({
+        x: Math.random() * pantalla.width,
+        y: Math.random() * 440,
+        tamano: 1 + Math.random() * 2,
+        fase: Math.random() * Math.PI * 2
+      });
+    }
+
+    const nubes = [];
+    for (let i = 0; i < 5; i++) {
+      nubes.push({
+        x: Math.random() * pantalla.width,
+        y: 55 + Math.random() * 140,
+        escala: 0.55 + Math.random() * 0.7,
+        velocidad: 0.10 + Math.random() * 0.22
+      });
+    }
+
+    const hierba = [];
+    for (let i = 0; i < 110; i++) {
+      hierba.push({
+        x: Math.random() * pantalla.width,
+        alto: 4 + Math.random() * 8,
+        ladeo: (Math.random() - 0.5) * 4
+      });
+    }
+
+    const adornosSuelo = [];
+    for (let i = 0; i < 11; i++) {
+      adornosSuelo.push({
+        x: Math.random() * pantalla.width,
+        y: SUELO_Y + 6 + Math.random() * 14,
+        cual: i % 4
+      });
+    }
+
+
+    // ==========================================
+    //  8. GUARDAR Y LEER (localStorage)
+    // ==========================================
+
+    function leerTodo() {
+      try {
+        const antiguo = Number(localStorage.getItem("recordAtrapaFrutas")) || 0;
+
+        records = {
+          clasico:      Number(localStorage.getItem("recordClasico"))      || antiguo,
+          contrarreloj: Number(localStorage.getItem("recordContrarreloj")) || 0,
+          dos:          Number(localStorage.getItem("recordDos"))          || 0
+        };
+
+        monedas = Number(localStorage.getItem("monedas")) || 0;
+
+        // Las mejoras se guardan como TEXTO en formato JSON, porque
+        // localStorage solo sabe guardar texto. JSON.parse lo convierte
+        // de vuelta en un objeto de verdad.
+        const cestas = localStorage.getItem("cestasCompradas");
+        if (cestas) {
+          const leidas = JSON.parse(cestas);
+          // Solo nos quedamos las claves que existen de verdad hoy
+          cestasCompradas = ["mimbre", "azul"];
+          for (const c of CESTAS) {
+            if (leidas.indexOf(c.clave) >= 0 &&
+                cestasCompradas.indexOf(c.clave) < 0) {
+              cestasCompradas.push(c.clave);
+            }
+          }
+        }
+        const elegida = localStorage.getItem("cestaElegida");
+        if (elegida && cestasCompradas.indexOf(elegida) >= 0) {
+          cestaElegida = elegida;
+        }
+
+        const guardadas = localStorage.getItem("mejoras");
+        if (guardadas) {
+          const leidas = JSON.parse(guardadas);
+          for (const m of MEJORAS) {
+            // El "|| 0" protege si un dia anadimos una mejora nueva:
+            // las partidas viejas no la tendran guardada.
+            mejoras[m.clave] = Number(leidas[m.clave]) || 0;
+          }
+        }
+      } catch (error) {
+        // Si algo falla, empezamos de cero y el juego sigue funcionando
+      }
+    }
+
+    function guardarRecord(queModo, valor) {
+      try {
+        const claves = { clasico: "recordClasico",
+                         contrarreloj: "recordContrarreloj",
+                         dos: "recordDos" };
+        localStorage.setItem(claves[queModo], valor);
+      } catch (error) { /* nada */ }
+    }
+
+    function guardarMonedas() {
+      try { localStorage.setItem("monedas", monedas); }
+      catch (error) { /* nada */ }
+    }
+
+    function guardarMejoras() {
+      try { localStorage.setItem("mejoras", JSON.stringify(mejoras)); }
+      catch (error) { /* nada */ }
+    }
+
+    function guardarCestas() {
+      try {
+        localStorage.setItem("cestasCompradas", JSON.stringify(cestasCompradas));
+        localStorage.setItem("cestaElegida", cestaElegida);
+      } catch (error) { /* nada */ }
+    }
+
+    leerTodo();
+
+
+    // ==========================================
+    //  9. SONIDO
+    // ==========================================
+
+    let audio = null;
+
+    function despertarAudio() {
+      try {
+        if (audio === null) {
+          audio = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audio.state === "suspended") audio.resume();
+      } catch (error) { /* nada */ }
+    }
+
+    function sonido(frecuencia, duracion, forma, volumenPropio) {
+      const vol = (volumenPropio === undefined) ? AJUSTES.volumen : volumenPropio;
+      if (vol <= 0) return;
+      try {
+        if (audio === null) {
+          audio = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audio.state === "suspended") return;
+
+        const oscilador = audio.createOscillator();
+        const ganancia  = audio.createGain();
+        oscilador.type = forma || "square";
+        oscilador.frequency.value = frecuencia;
+        ganancia.gain.setValueAtTime(vol, audio.currentTime);
+        ganancia.gain.exponentialRampToValueAtTime(0.0001,
+                                                   audio.currentTime + duracion);
+        oscilador.connect(ganancia);
+        ganancia.connect(audio.destination);
+        oscilador.start();
+        oscilador.stop(audio.currentTime + duracion);
+      } catch (error) { /* nada */ }
+    }
+
+    function sonidoAtrapar() { sonido(880, 0.08, "square");   }
+    function sonidoBomba()   { sonido(70,  0.35, "sawtooth"); }
+    function sonidoFallo()   { sonido(200, 0.20, "triangle"); }
+    function sonidoPausa(f)  { sonido(f,   0.10, "triangle"); }
+    function sonidoTic()     { sonido(1100, 0.05, "square");  }
+    function sonidoNo()      { sonido(120, 0.16, "square");   }
+
+    function sonidoMoneda() {
+      sonido(988,  0.06, "square");
+      setTimeout(function () { sonido(1319, 0.12, "square"); }, 55);
+    }
+
+    function sonidoEstrella() {
+      sonido(659, 0.09, "triangle");
+      setTimeout(function () { sonido(880,  0.09, "triangle"); },  70);
+      setTimeout(function () { sonido(1175, 0.14, "triangle"); }, 140);
+    }
+
+    function sonidoVidaExtra() {
+      sonido(523, 0.11, "triangle");
+      setTimeout(function () { sonido(784, 0.20, "triangle"); }, 100);
+    }
+
+    function sonidoIman() {
+      sonido(330, 0.10, "sawtooth");
+      setTimeout(function () { sonido(494, 0.22, "sawtooth"); }, 90);
+    }
+
+    function sonidoCompra() {
+      sonido(523,  0.09, "triangle");
+      setTimeout(function () { sonido(659,  0.09, "triangle"); },  80);
+      setTimeout(function () { sonido(784,  0.09, "triangle"); }, 160);
+      setTimeout(function () { sonido(1047, 0.20, "triangle"); }, 240);
+    }
+
+    // Subir de velocidad: dos notas rapidas que suben, como un acelerón
+    function sonidoMasRapido() {
+      sonido(587, 0.07, "square");
+      setTimeout(function () { sonido(880, 0.14, "square"); }, 65);
+    }
+
+    // El cambio de mundo suena a fanfarria
+    function sonidoMundoNuevo() {
+      sonido(392, 0.12, "triangle");
+      setTimeout(function () { sonido(523, 0.12, "triangle"); }, 110);
+      setTimeout(function () { sonido(659, 0.12, "triangle"); }, 220);
+      setTimeout(function () { sonido(784, 0.30, "triangle"); }, 330);
+    }
+
+    function sonidoGameOver() {
+      sonido(400, 0.14);
+      setTimeout(function () { sonido(300, 0.14); }, 140);
+      setTimeout(function () { sonido(180, 0.35); }, 280);
+    }
+
+
+    // ==========================================
+    //  10. LA MUSICA
+    // ==========================================
+
+    // Cada mundo tiene SU cancion, guardada en su propia ficha.
+    // Esta funcion no sabe ninguna melodia: solo sabe leer la del
+    // mundo en el que estes. En los menus suena la del primer mundo.
+    function sonarMusica() {
+      if (!AJUSTES.musica) return;
+      if (estado !== "jugando" && estado !== "inicio" &&
+          estado !== "tienda"  && estado !== "ayuda") return;
+
+      const mundo = (estado === "jugando") ? MUNDOS[mundoActual] : MUNDOS[0];
+
+      if (reloj % mundo.ritmo !== 0) return;
+
+      const nota = mundo.melodia[pasoMelodia % mundo.melodia.length];
+      if (nota > 0) sonido(nota, 0.17, "triangle", AJUSTES.volumenMusica);
+
+      // El bajo: una nota grave por cada cuatro de la melodia
+      if (pasoMelodia % 4 === 0) {
+        const grave = mundo.bajo[Math.floor(pasoMelodia / 4) % mundo.bajo.length];
+        if (grave > 0) sonido(grave, 0.42, "sine", AJUSTES.volumenMusica * 1.5);
+      }
+      pasoMelodia++;
+    }
+
+
+    // ==========================================
+    //  11. LOS BOTONES DE LOS MENUS
+    // ==========================================
+    // Son DATOS, no codigo de dibujo. Asi el mismo sitio sirve para
+    // pintarlos y para saber si un dedo ha caido dentro: imposible que
+    // se descoloquen el uno del otro.
+
+    const BOTONES_MODO = [
+      { modo: "clasico",      x:  18, y: 212, w: 140, h: 68,
+        titulo: "CLÁSICO",  abajo: "3 vidas",      icono: "🧺" },
+      { modo: "contrarreloj", x: 170, y: 212, w: 140, h: 68,
+        titulo: "60 SEG",   abajo: "contrarreloj", icono: "⏱️" },
+      { modo: "dos",          x: 322, y: 212, w: 140, h: 68,
+        titulo: "2 JUGAD.", abajo: "← →  y  A D",  icono: "👯" }
+    ];
+
+    const BOTON_TIENDA = { x:  40, y: 302, w: 190, h: 44 };
+    const BOTON_AYUDA  = { x: 250, y: 302, w: 190, h: 44 };
+    const BOTON_VOLVER = { x: 150, y: 492, w: 180, h: 38 };
+
+    // El botoncito de salir, arriba en el centro, mientras juegas.
+    // Va justo en el hueco que queda entre los dos paneles del marcador.
+    const BOTON_SALIR  = { x: 200, y:   8, w:  80, h: 30 };
+
+    // Los dos botones grandes de la pantalla de pausa
+    const BOTON_SEGUIR = { x: 100, y: 330, w: 280, h: 44 };
+    const BOTON_ALMENU = { x: 100, y: 386, w: 280, h: 44 };
+
+    function dentroDe(caja, x, y) {
+      return x > caja.x && x < caja.x + caja.w
+          && y > caja.y && y < caja.y + caja.h;
+    }
+
+    function cajaFilaTienda(i) {
+      return { x: 26, y: 106 + i * 62, w: pantalla.width - 52, h: 54 };
+    }
+
+    // Los cuadraditos de las cestas, en una fila
+    function cajaCesta(i) {
+      const ancho = 58, hueco = 4;
+      const total = CESTAS.length * ancho + (CESTAS.length - 1) * hueco;
+      const inicio = (pantalla.width - total) / 2;
+      return { x: inicio + i * (ancho + hueco), y: 386, w: ancho, h: 62 };
+    }
+
+
+    // ==========================================
+    //  12. CONTROLES: TECLADO
+    // ==========================================
+    const teclas = {};
+
+    document.addEventListener("keydown", function (evento) {
+      despertarAudio();
+      teclas[evento.key] = true;
+      if (evento.key.startsWith("Arrow")) evento.preventDefault();
+
+      // ---- En la tienda ----
+      if (estado === "tienda") {
+        // Hay MEJORAS.length filas de mejoras, y una fila mas: las cestas
+        const filas = MEJORAS.length + 1;
+
+        if (evento.key === "ArrowUp") {
+          filaTienda = (filaTienda - 1 + filas) % filas;
+          sonidoPausa(520);
+        }
+        if (evento.key === "ArrowDown") {
+          filaTienda = (filaTienda + 1) % filas;
+          sonidoPausa(520);
+        }
+        // En la fila de las cestas, las flechas de los lados eligen cual
+        if (filaTienda === MEJORAS.length) {
+          if (evento.key === "ArrowLeft") {
+            cursorCesta = (cursorCesta - 1 + CESTAS.length) % CESTAS.length;
+            sonidoPausa(560);
+          }
+          if (evento.key === "ArrowRight") {
+            cursorCesta = (cursorCesta + 1) % CESTAS.length;
+            sonidoPausa(560);
+          }
+        }
+        if (evento.key === " " || evento.key === "Enter") {
+          evento.preventDefault();
+          if (filaTienda === MEJORAS.length) tocarCesta(cursorCesta);
+          else                               comprar(filaTienda);
+        }
+        if (evento.key === "Escape" || evento.key === "t" || evento.key === "T") {
+          estado = "inicio";
+          sonidoPausa(330);
+        }
+        return;      // en la tienda no hacemos nada mas
+      }
+
+      // ---- En la pantalla de ayuda ----
+      if (estado === "ayuda") {
+        if (evento.key === "Escape" || evento.key === " " ||
+            evento.key === "h" || evento.key === "H") {
+          evento.preventDefault();
+          estado = "inicio";
+          sonidoPausa(330);
+        }
+        return;
+      }
+
+      // ---- En el menu principal ----
+      if (estado === "inicio") {
+        if (evento.key === "ArrowLeft")  moverEleccionModo(-1);
+        if (evento.key === "ArrowRight") moverEleccionModo( 1);
+
+        if (evento.key === "t" || evento.key === "T") {
+          estado = "tienda";
+          filaTienda = 0;
+          sonidoPausa(660);
+          return;
+        }
+        if (evento.key === "h" || evento.key === "H") {
+          estado = "ayuda";
+          sonidoPausa(660);
+          return;
+        }
+      }
+
+      if (evento.key === " ") {
+        evento.preventDefault();
+        if (estado === "inicio" || estado === "perdido") empezarPartida();
+      }
+      if (evento.key === "p" || evento.key === "P") {
+        if (estado === "jugando")    { estado = "pausa";   sonidoPausa(300); }
+        else if (estado === "pausa") { estado = "jugando"; sonidoPausa(520); }
+      }
+
+      // ESC sale al menu principal desde la partida o desde la pausa
+      if (evento.key === "Escape") {
+        if (estado === "jugando" || estado === "pausa") volverAlMenu();
+      }
+      if (evento.key === "m" || evento.key === "M") {
+        AJUSTES.musica = !AJUSTES.musica;
+        sonidoPausa(AJUSTES.musica ? 660 : 330);
+      }
+    });
+
+    document.addEventListener("keyup", function (evento) {
+      teclas[evento.key] = false;
+    });
+
+    window.addEventListener("blur", function () {
+      for (const tecla in teclas) teclas[tecla] = false;
+      if (estado === "jugando") estado = "pausa";
+    });
+
+    function moverEleccionModo(direccion) {
+      let i = 0;
+      for (let k = 0; k < BOTONES_MODO.length; k++) {
+        if (BOTONES_MODO[k].modo === modo) i = k;
+      }
+      i = (i + direccion + BOTONES_MODO.length) % BOTONES_MODO.length;
+      modo = BOTONES_MODO[i].modo;
+      sonidoPausa(560);
+    }
+
+
+    // ==========================================
+    //  13. CONTROLES: DEDO Y RATON
+    // ==========================================
+
+    function puntoEnElLienzo(evento) {
+      const caja   = pantalla.getBoundingClientRect();
+      const escala = pantalla.width / caja.width;
+      return {
+        x: (evento.clientX - caja.left) * escala,
+        y: (evento.clientY - caja.top)  * escala
+      };
+    }
+
+    function moverCestaHacia(j, x) {
+      j.x = x - j.ancho / 2;
+      if (j.x < 0) j.x = 0;
+      if (j.x + j.ancho > pantalla.width) j.x = pantalla.width - j.ancho;
+    }
+
+    pantalla.addEventListener("pointermove", function (evento) {
+      if (estado !== "jugando") return;
+      if (evento.pointerType === "mouse" && evento.buttons === 0) return;
+      // El dedo controla siempre a la jugadora 1
+      moverCestaHacia(jugadoras[0], puntoEnElLienzo(evento).x);
+    });
+
+    pantalla.addEventListener("pointerdown", function (evento) {
+      evento.preventDefault();
+      despertarAudio();
+
+      const p = puntoEnElLienzo(evento);
+
+      if (estado === "inicio") {
+        for (const b of BOTONES_MODO) {
+          if (dentroDe(b, p.x, p.y)) { modo = b.modo; empezarPartida(); return; }
+        }
+        if (dentroDe(BOTON_TIENDA, p.x, p.y)) {
+          estado = "tienda"; filaTienda = 0; sonidoPausa(660); return;
+        }
+        if (dentroDe(BOTON_AYUDA, p.x, p.y)) {
+          estado = "ayuda"; sonidoPausa(660); return;
+        }
+        empezarPartida();
+
+      } else if (estado === "tienda") {
+        for (let i = 0; i < MEJORAS.length; i++) {
+          if (dentroDe(cajaFilaTienda(i), p.x, p.y)) {
+            filaTienda = i;
+            comprar(i);
+            return;
+          }
+        }
+        for (let i = 0; i < CESTAS.length; i++) {
+          if (dentroDe(cajaCesta(i), p.x, p.y)) {
+            filaTienda = MEJORAS.length;
+            cursorCesta = i;
+            tocarCesta(i);
+            return;
+          }
+        }
+        if (dentroDe(BOTON_VOLVER, p.x, p.y)) {
+          estado = "inicio"; sonidoPausa(330);
+        }
+
+      } else if (estado === "ayuda") {
+        estado = "inicio"; sonidoPausa(330);
+
+      } else if (estado === "perdido") {
+        empezarPartida();
+
+      } else if (estado === "pausa") {
+        if (dentroDe(BOTON_ALMENU, p.x, p.y)) { volverAlMenu(); return; }
+        // Cualquier otro sitio (incluido el boton de seguir) reanuda
+        estado = "jugando";
+        sonidoPausa(520);
+
+      } else {
+        // El botoncito de salir de arriba
+        if (dentroDe(BOTON_SALIR, p.x, p.y)) { volverAlMenu(); return; }
+        moverCestaHacia(jugadoras[0], p.x);
+      }
+    });
+
+
+    // ==========================================
+    //  14. LA TIENDA
+    // ==========================================
+
+    function precioDe(mejora) {
+      const nivel = mejoras[mejora.clave];
+      if (nivel >= mejora.max) return null;    // ya esta al maximo
+      return mejora.precios[nivel];
+    }
+
+    function comprar(indice) {
+      const mejora = MEJORAS[indice];
+      const precio = precioDe(mejora);
+
+      if (precio === null) {
+        mostrarMensajeTienda("¡Ya la tienes al máximo!");
+        sonidoNo();
+        return;
+      }
+      if (monedas < precio) {
+        mostrarMensajeTienda("Te faltan " + (precio - monedas) + " monedas");
+        sonidoNo();
+        return;
+      }
+
+      monedas -= precio;
+      mejoras[mejora.clave]++;
+      guardarMonedas();
+      guardarMejoras();
+
+      mostrarMensajeTienda("¡" + mejora.nombre + " nivel " +
+                           mejoras[mejora.clave] + "!");
+      sonidoCompra();
+    }
+
+    function mostrarMensajeTienda(texto) {
+      mensajeTienda = texto;
+      mensajeTiendaTiempo = 150;
+    }
+
+    // Las cestas funcionan distinto a las mejoras: una mejora se compra y
+    // ya esta. Una cesta se compra Y ADEMAS hay que ponersela.
+    function tocarCesta(indice) {
+      const cesta = CESTAS[indice];
+      const laTengo = cestasCompradas.indexOf(cesta.clave) >= 0;
+
+      if (laTengo) {
+        if (cestaElegida === cesta.clave) {
+          mostrarMensajeTienda("Ya llevas la cesta " + cesta.nombre);
+          sonidoPausa(440);
+          return;
+        }
+        cestaElegida = cesta.clave;
+        guardarCestas();
+        mostrarMensajeTienda("¡Te has puesto la cesta " + cesta.nombre + "!");
+        sonidoPausa(700);
+        return;
+      }
+
+      if (monedas < cesta.precio) {
+        mostrarMensajeTienda("Te faltan " + (cesta.precio - monedas) + " monedas");
+        sonidoNo();
+        return;
+      }
+
+      monedas -= cesta.precio;
+      cestasCompradas.push(cesta.clave);
+      cestaElegida = cesta.clave;      // al comprarla te la pones ya
+      guardarMonedas();
+      guardarCestas();
+      mostrarMensajeTienda("¡Cesta " + cesta.nombre + " comprada y puesta!");
+      sonidoCompra();
+    }
+
+
+    // ==========================================
+    //  15. FABRICA DE COSAS QUE CAEN
+    // ==========================================
+
+    // Los puntos que mandan: en 2 jugadoras, los de la que va mejor
+    function puntosLider() {
+      let mejor = 0;
+      for (const j of enJuego()) {
+        if (j.puntos > mejor) mejor = j.puntos;
+      }
+      return mejor;
+    }
+
+    function bombasPermitidas() {
+      const umbral = (modo === "contrarreloj")
+                   ? AJUSTES.puntosParaBombasContrarreloj
+                   : AJUSTES.puntosParaBombas;
+      return puntosLider() >= umbral;
+    }
+
+    function alguienNecesitaVida() {
+      if (modo === "contrarreloj") return true;   // ahi el corazon da tiempo
+      for (const j of enJuego()) {
+        if (j.viva && j.vidas < AJUSTES.vidasMaximas) return true;
+      }
+      return false;
+    }
+
+    function elegirTipo() {
+      const dado = Math.random();
+      let limite = 0;
+
+      if (alguienNecesitaVida()) {
+        limite += AJUSTES.probabilidadCorazon;
+        if (dado < limite) return "corazon";
+      }
+      if (bombasPermitidas()) {
+        limite += AJUSTES.probabilidadBomba;
+        if (dado < limite) return "bomba";
+      }
+      limite += AJUSTES.probabilidadMoneda;
+      if (dado < limite) return "moneda";
+
+      limite += AJUSTES.probabilidadIman;
+      if (dado < limite) return "iman";
+
+      limite += AJUSTES.probabilidadEstrella;
+      if (dado < limite) return "estrella";
+
+      return "objeto";     // el objeto normal del mundo en el que estes
+    }
+
+    // Los premios NUNCA cambian de aspecto, en ningun mundo. Tienes que
+    // poder reconocer un peligro en una decima de segundo, sin pensar.
+    const PREMIOS = {
+      bomba:    { dibujo: { emoji: "💣", forma: "bomba",    color: "#3c3a52" },
+                  color: "#ff5a3c", giro: 0.014 },
+      estrella: { dibujo: { emoji: "⭐", forma: "estrella", color: "#ffd60a",
+                            puntas: 5, gordura: 0.46 },
+                  color: "#ffd93d", giro: 0.045 },
+      corazon:  { dibujo: { emoji: "💖", forma: "corazon",  color: "#ff5d8f" },
+                  color: "#ff8fb1", giro: 0 },
+      iman:     { dibujo: { emoji: "🧲", forma: "iman",     color: "#b06bff" },
+                  color: "#b06bff", giro: 0.030 },
+      moneda:   { dibujo: { emoji: "🪙", forma: "moneda",   color: "#ffc93c" },
+                  color: "#ffd60a", giro: 0.060 }
+    };
+
+    function crearCosaQueCae() {
+      const tipo = elegirTipo();
+      let dibujo, color, giro;
+
+      if (PREMIOS[tipo]) {
+        dibujo = PREMIOS[tipo].dibujo;
+        color  = PREMIOS[tipo].color;      // el color de sus chispas
+        giro   = PREMIOS[tipo].giro;
+      } else {
+        // El objeto normal sale del mundo actual: frutas, conchas,
+        // copos, cohetes o caramelos, segun donde estes.
+        const lista = MUNDOS[mundoActual].objetos;
+        dibujo = lista[Math.floor(Math.random() * lista.length)];
+        color  = dibujo.color;
+        giro   = (Math.random() - 0.5) * 0.020;
+      }
+
+      const xInicial = 34 + Math.random() * (pantalla.width - 68);
+
+      cosas.push({
+        xBase: xInicial, x: xInicial, y: -34,
+        velocidad: AJUSTES.frutaVelocidadMinima
+                 + Math.random() * AJUSTES.frutaVelocidadExtra,
+        amplitud: 4 + Math.random() * 7,
+        fase: Math.random() * Math.PI * 2,
+        angulo: (Math.random() - 0.5) * 0.4,
+        giro: giro,
+        tipo: tipo, dibujo: dibujo, color: color,
+        radio: AJUSTES.frutaRadio,
+        fuera: false
+      });
+    }
+
+    function esBueno(tipo) {
+      return tipo !== "bomba";
+    }
+
+    function esPremioEspecial(tipo) {
+      return tipo === "estrella" || tipo === "corazon"
+          || tipo === "iman"     || tipo === "moneda";
+    }
+
+
+    // ==========================================
+    //  16. EFECTOS
+    // ==========================================
+
+    function crearParticulas(x, y, color, cantidad) {
+      for (let i = 0; i < cantidad; i++) {
+        const angulo = Math.random() * Math.PI * 2;
+        const fuerza = 1 + Math.random() * 3.5;
+        particulas.push({
+          x: x, y: y,
+          vx: Math.cos(angulo) * fuerza,
+          vy: Math.sin(angulo) * fuerza - 1.5,
+          vida: 1,
+          tamano: 1.5 + Math.random() * 3,
+          color: color
+        });
+      }
+    }
+
+    function crearAviso(x, y, texto, color) {
+      avisos.push({ x: x, y: y, texto: texto, color: color, vida: 1 });
+    }
+
+    function actualizarEfectos() {
+      if (estado === "pausa") return;
+
+      for (const p of particulas) {
+        p.vy += 0.18;  p.x += p.vx;  p.y += p.vy;  p.vida -= 0.022;
+      }
+      particulas = particulas.filter(function (p) { return p.vida > 0; });
+
+      for (const a of avisos) { a.y -= 1.1;  a.vida -= 0.02; }
+      avisos = avisos.filter(function (a) { return a.vida > 0; });
+
+      for (const n of nubes) {
+        n.x += n.velocidad;
+        if (n.x > pantalla.width + 70) n.x = -70;
+      }
+
+      sacudida *= 0.88;   if (sacudida < 0.3) sacudida = 0;
+      flash    *= 0.90;   if (flash < 0.01)   flash = 0;
+
+      for (const j of jugadoras) {
+        j.rebote *= 0.82;
+        if (j.rebote < 0.2) j.rebote = 0;
+      }
+
+      if (bombasActivadas > 0) bombasActivadas--;
+      if (cartelMundo > 0) cartelMundo--;
+      if (cartelVelocidad > 0) cartelVelocidad--;
+      if (mensajeTiendaTiempo > 0) mensajeTiendaTiempo--;
+
+      // La transicion entre mundos avanza sola
+      if (transicion < 1) {
+        transicion += 1 / AJUSTES.pasosDeTransicion;
+        if (transicion > 1) transicion = 1;
+      }
+    }
+
+
+    // ==========================================
+    //  17. COLISIONES
+    // ==========================================
+
+    function seTocan(cosa, j) {
+      const r = cosa.radio + AJUSTES.generosidad;
+      return cosa.x + r > j.x
+          && cosa.x - r < j.x + j.ancho
+          && cosa.y + r > j.y
+          && cosa.y - r < j.y + j.alto;
+    }
+
+
+    // ==========================================
+    //  18. EMPEZAR PARTIDA
+    // ==========================================
+
+    function empezarPartida() {
+      numJugadoras = (modo === "dos") ? 2 : 1;
+
+      cosas = [];  particulas = [];  avisos = [];
+      contadorFotogramas = 0;
+      tiempoRestante = AJUSTES.segundosContrarreloj * 60;
+
+      // Aqui se aplican las mejoras compradas en la tienda
+      const anchoExtra = mejoras.ancho     * 18;
+      const velExtra   = mejoras.velocidad * 2;
+      const vidasExtra = mejoras.vidas;
+
+      // La jugadora 1 lleva la cesta que hayas elegido en la tienda.
+      // La 2 lleva otra distinta, para que no os confundais.
+      jugadoras[0].colores = cestaPorClave(cestaElegida).colores;
+      jugadoras[1].colores = (cestaElegida === "azul") ? MADERA : MIMBRE_AZUL;
+
+      for (let i = 0; i < jugadoras.length; i++) {
+        const j = jugadoras[i];
+        j.ancho     = AJUSTES.cestaAncho     + anchoExtra;
+        j.velocidad = AJUSTES.cestaVelocidad + velExtra;
+        j.alto      = AJUSTES.cestaAlto;
+        j.y         = SUELO_Y - j.alto - 1;
+        j.puntos = 0;
+        j.vidas  = AJUSTES.vidasIniciales + vidasExtra;
+        j.viva   = true;
+        j.rebote = 0;
+        j.inclinacion = 0;
+        j.efectoIman = 0;
+
+        // En dos jugadoras empiezan separadas, cada una a un lado
+        if (numJugadoras === 2) {
+          j.x = (i === 0) ? pantalla.width * 0.25 - j.ancho / 2
+                          : pantalla.width * 0.75 - j.ancho / 2;
+        } else {
+          j.x = (pantalla.width - j.ancho) / 2;
+        }
+        j.xAnterior = j.x;
+      }
+
+      sacudida = 0;  flash = 0;
+      bombasActivadas = 0;
+      yaAvisadoBombas = false;
+      nuevoRecord = false;
+      monedasGanadas = 0;
+      pasoMelodia = 0;
+
+      mundoActual = 0;  mundoAnterior = 0;  transicion = 1;
+      cartelMundo = 0;
+      nivelVelocidad = 0;  cartelVelocidad = 0;
+      relojDia = 0;        // cada partida empieza de dia
+
+      estado = "jugando";
+    }
+
+
+    // ==========================================
+    //  19. TERMINAR PARTIDA
+    // ==========================================
+
+    // Reparte lo que has ganado en la partida: monedas y record.
+    // Esta parte la necesitan DOS sitios (perder, y salirse al menu),
+    // asi que vive en su propia funcion y no repetida en los dos.
+    function cobrarPartida() {
+      nuevoRecord = false;
+
+      // Las monedas de premio: 1 por cada 10 puntos conseguidos
+      let puntosTotales = 0;
+      for (const j of enJuego()) puntosTotales += j.puntos;
+
+      monedasGanadas = Math.floor(puntosTotales / AJUSTES.puntosPorMoneda);
+      if (monedasGanadas > 0) {
+        monedas += monedasGanadas;
+        guardarMonedas();
+      }
+
+      // El record del modo: la mejor puntuacion individual
+      const mejor = puntosLider();
+      if (mejor > records[modo]) {
+        records[modo] = mejor;
+        guardarRecord(modo, mejor);
+        nuevoRecord = true;
+      }
+    }
+
+    function terminarPartida() {
+      estado = "perdido";
+      cobrarPartida();
+      sacudida = 20;
+      sonidoGameOver();
+    }
+
+    // Salirse al menu principal en mitad de una partida.
+    // Cobras igual que si hubieras perdido: no te castigamos por parar.
+    function volverAlMenu() {
+      if (estado === "jugando" || estado === "pausa") cobrarPartida();
+
+      estado = "inicio";
+      cosas = [];  particulas = [];  avisos = [];
+      sacudida = 0;  flash = 0;
+      bombasActivadas = 0;
+      cartelMundo = 0;
+      cartelVelocidad = 0;
+      pasoMelodia = 0;
+      sonidoPausa(300);
+    }
+
+
+    // ==========================================
+    //  20. CAMBIAR DE MUNDO
+    // ==========================================
+
+    // ==========================================
+    //  20b. LA DIFICULTAD
+    // ==========================================
+
+    // Cuanto multiplicamos la velocidad de todo lo que cae.
+    // Con nivel 0 vale 1, o sea que no cambia nada.
+    function factorVelocidad() {
+      return 1 + nivelVelocidad * AJUSTES.subidaPorNivel;
+    }
+
+    function comprobarVelocidad() {
+      const nivel = Math.min(
+        Math.floor(puntosLider() / AJUSTES.puntosPorNivel),
+        AJUSTES.nivelMaximo
+      );
+
+      if (nivel > nivelVelocidad) {
+        nivelVelocidad = nivel;
+        cartelVelocidad = 130;      // el aviso dura unos 2 segundos
+        sacudida = 7;
+        sonidoMasRapido();
+      }
+    }
+
+    function comprobarMundo() {
+      const cual = Math.min(
+        Math.floor(puntosLider() / AJUSTES.puntosPorMundo),
+        MUNDOS.length - 1
+      );
+
+      if (cual !== mundoActual) {
+        mundoAnterior = mundoActual;
+        mundoActual = cual;
+        transicion = 0;              // empieza la mezcla suave
+        cartelMundo = 170;
+        pasoMelodia = 0;             // la cancion nueva empieza por el principio
+        sonidoMundoNuevo();
+
+        // Confeti del color del mundo nuevo
+        for (const c of MUNDOS[cual].adornos) {
+          crearParticulas(pantalla.width / 2, 200, c, 14);
+        }
+      }
+    }
+
+
+    // ==========================================
+    //  21. ACTUALIZAR (update)
+    // ==========================================
+
+    function actualizar() {
+      if (estado !== "jugando") return;
+
+      relojDia++;      // pasa el tiempo: el sol se mueve
+
+      // --- El reloj del contrarreloj ---
+      if (modo === "contrarreloj") {
+        tiempoRestante--;
+        if (tiempoRestante <= 600 && tiempoRestante > 0
+            && tiempoRestante % 60 === 0) sonidoTic();
+        if (tiempoRestante <= 0) {
+          tiempoRestante = 0;
+          terminarPartida();
+          return;
+        }
+      }
+
+      // --- Mover cada jugadora ---
+      for (const j of enJuego()) {
+        if (j.efectoIman > 0) j.efectoIman--;
+        if (!j.viva) continue;
+
+        if (pulsada(j.teclaIzq)) j.x -= j.velocidad;
+        if (pulsada(j.teclaDer)) j.x += j.velocidad;
+
+        if (j.x < 0) j.x = 0;
+        if (j.x + j.ancho > pantalla.width) j.x = pantalla.width - j.ancho;
+
+        const desplazamiento = j.x - j.xAnterior;
+        j.xAnterior = j.x;
+
+        let objetivo = -desplazamiento * 0.015;
+        if (objetivo >  0.2) objetivo =  0.2;
+        if (objetivo < -0.2) objetivo = -0.2;
+        j.inclinacion += (objetivo - j.inclinacion) * 0.22;
+      }
+
+      comprobarMundo();
+      comprobarVelocidad();
+
+      // --- Aviso de bombas ---
+      if (!yaAvisadoBombas && bombasPermitidas()) {
+        yaAvisadoBombas = true;
+        bombasActivadas = 140;
+        sacudida = 10;
+        sonido(150, 0.5, "sawtooth");
+      }
+
+      // --- Crear cosas ---
+      contadorFotogramas++;
+      if (contadorFotogramas % AJUSTES.fotogramasEntreFrutas === 0) {
+        crearCosaQueCae();
+      }
+
+      // Todo lo que cae va multiplicado por el factor del nivel
+      const rapidez = factorVelocidad();
+
+      // --- Mover cada cosa ---
+      for (const cosa of cosas) {
+
+        cosa.y += cosa.velocidad * rapidez;
+        cosa.angulo += cosa.giro;
+
+        // El iman de cada jugadora tira de los premios hacia ELLA
+        if (esBueno(cosa.tipo)) {
+          for (const j of enJuego()) {
+            if (j.efectoIman > 0 && j.viva) {
+              const centro = j.x + j.ancho / 2;
+              cosa.xBase += (centro - cosa.xBase) * AJUSTES.fuerzaIman;
+              if (reloj % 4 === 0) {
+                crearParticulas(cosa.x, cosa.y, "#d9b3ff", 1);
+              }
+            }
+          }
+        }
+
+        cosa.x = cosa.xBase + Math.sin(reloj / 28 + cosa.fase) * cosa.amplitud;
+
+        // ¿La ha cogido alguna jugadora? La primera que la toque.
+        let quien = null;
+        for (const j of enJuego()) {
+          if (j.viva && seTocan(cosa, j)) { quien = j; break; }
+        }
+
+        if (quien !== null) {
+          cosa.fuera = true;
+          recoger(cosa, quien);
+
+        } else if (cosa.y > SUELO_Y - 4) {
+          cosa.fuera = true;
+          crearParticulas(cosa.x, SUELO_Y - 2, cosa.color, 9);
+
+          // Solo los objetos normales castigan, y solo en clasico.
+          // En 2 jugadoras nadie pierde vida por algo que no cogio nadie:
+          // seria injusto castigar a las dos por una sola cosa.
+          if (cosa.tipo === "objeto" && modo === "clasico") {
+            jugadoras[0].vidas--;
+            sacudida = 9;  flash = 0.55;
+            sonidoFallo();
+          }
+        }
+      }
+
+      cosas = cosas.filter(function (cosa) { return cosa.fuera === false; });
+
+      // --- ¿Alguien se ha quedado sin vidas? ---
+      if (modo !== "contrarreloj") {
+        let vivas = 0;
+        for (const j of enJuego()) {
+          if (j.vidas <= 0) j.viva = false;
+          if (j.viva) vivas++;
+        }
+        if (vivas === 0) terminarPartida();
+      }
+    }
+
+
+    // ==========================================
+    //  22. RECOGER UNA COSA
+    // ==========================================
+    // Antes esto era un monton de "else if" dentro de actualizar(). Con
+    // dos jugadoras hay que saber SIEMPRE a quien afecta cada cosa, asi
+    // que le hemos dado su propia funcion, con la jugadora como parametro.
+
+    function recoger(cosa, j) {
+
+      if (cosa.tipo === "bomba") {
+        sacudida = 22;  flash = 1;
+        crearParticulas(cosa.x, cosa.y, cosa.color, 26);
+        sonidoBomba();
+
+        if (modo === "contrarreloj") {
+          tiempoRestante -= AJUSTES.segundosQueQuitaBomba * 60;
+          if (tiempoRestante < 0) tiempoRestante = 0;
+          crearAviso(cosa.x, cosa.y - 20,
+                     "-" + AJUSTES.segundosQueQuitaBomba + "s", "#ff5a3c");
+        } else {
+          j.vidas--;
+          crearAviso(cosa.x, cosa.y - 20, "BOOM!", "#ff5a3c");
+        }
+
+      } else if (cosa.tipo === "estrella") {
+        j.puntos += AJUSTES.puntosEstrella;
+        j.rebote = 9;  sacudida = 5;
+        crearParticulas(cosa.x, cosa.y, cosa.color, 24);
+        crearAviso(cosa.x, cosa.y - 18, "+" + AJUSTES.puntosEstrella, "#ffd93d");
+        sonidoEstrella();
+
+      } else if (cosa.tipo === "corazon") {
+        j.rebote = 9;
+        crearParticulas(cosa.x, cosa.y, cosa.color, 20);
+        sonidoVidaExtra();
+        if (modo === "contrarreloj") {
+          tiempoRestante += AJUSTES.segundosQueDaCorazon * 60;
+          crearAviso(cosa.x, cosa.y - 18,
+                     "+" + AJUSTES.segundosQueDaCorazon + "s", "#ff8fb1");
+        } else {
+          j.vidas = Math.min(j.vidas + 1, AJUSTES.vidasMaximas);
+          crearAviso(cosa.x, cosa.y - 18, "+1 VIDA", "#ff8fb1");
+        }
+
+      } else if (cosa.tipo === "moneda") {
+        monedas++;
+        guardarMonedas();
+        j.rebote = 6;
+        crearParticulas(cosa.x, cosa.y, cosa.color, 16);
+        crearAviso(cosa.x, cosa.y - 16, "+1 🪙", "#ffd60a");
+        sonidoMoneda();
+
+      } else if (cosa.tipo === "iman") {
+        // El iman es SUYO: solo atrae hacia su cesta
+        j.efectoIman = AJUSTES.duracionIman + mejoras.iman * 120;
+        j.rebote = 9;
+        crearParticulas(cosa.x, cosa.y, cosa.color, 24);
+        crearAviso(cosa.x, cosa.y - 18, "¡IMÁN!", "#c99bff");
+        sonidoIman();
+
+      } else {
+        j.puntos++;
+        j.rebote = 7;  sacudida = 3;
+        crearParticulas(cosa.x, cosa.y, cosa.color, 12);
+        crearAviso(cosa.x, cosa.y - 15, "+1", "#ffffff");
+        sonidoAtrapar();
+      }
+    }
+
+
+    // ==========================================
+    //  23. HERRAMIENTAS DE DIBUJO
+    // ==========================================
+
+    function mezclarLista(a, b, t) {
+      return [ a[0] + (b[0] - a[0]) * t,
+               a[1] + (b[1] - a[1]) * t,
+               a[2] + (b[2] - a[2]) * t ];
+    }
+
+    function entre(a, b, t) { return a + (b - a) * t; }
+
+    function aColor(lista) {
+      return "rgb(" + Math.round(lista[0]) + "," +
+                      Math.round(lista[1]) + "," +
+                      Math.round(lista[2]) + ")";
+    }
+
+    function circulo(x, y, radio) {
+      pincel.beginPath();
+      pincel.arc(x, y, radio, 0, Math.PI * 2);
+      pincel.fill();
+    }
+
+    function elipse(x, y, radioX, radioY) {
+      pincel.beginPath();
+      pincel.ellipse(x, y, radioX, radioY, 0, 0, Math.PI * 2);
+      pincel.fill();
+    }
+
+    function rectRedondeado(x, y, w, h, r) {
+      pincel.beginPath();
+      pincel.moveTo(x + r, y);
+      pincel.lineTo(x + w - r, y);
+      pincel.quadraticCurveTo(x + w, y, x + w, y + r);
+      pincel.lineTo(x + w, y + h - r);
+      pincel.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      pincel.lineTo(x + r, y + h);
+      pincel.quadraticCurveTo(x, y + h, x, y + h - r);
+      pincel.lineTo(x, y + r);
+      pincel.quadraticCurveTo(x, y, x + r, y);
+      pincel.closePath();
+    }
+
+    function textoConBorde(texto, x, y, colorRelleno) {
+      pincel.lineJoin = "round";
+      pincel.lineWidth = 5;
+      pincel.strokeStyle = "rgba(0, 0, 0, 0.62)";
+      pincel.strokeText(texto, x, y);
+      pincel.fillStyle = colorRelleno || "white";
+      pincel.fillText(texto, x, y);
+    }
+
+
+    // ==========================================
+    //  23b. LA LUZ DEL JUEGO
+    // ==========================================
+    // De UN solo color sacamos su version iluminada y su version en
+    // sombra. Asi cada objeto necesita un color y nada mas, y toda la
+    // luz del juego viene del mismo sitio: de arriba a la izquierda.
+
+    function hexARgb(hex) {
+      return [ parseInt(hex.slice(1, 3), 16),
+               parseInt(hex.slice(3, 5), 16),
+               parseInt(hex.slice(5, 7), 16) ];
+    }
+
+    // cuanto > 0 aclara hacia el blanco; cuanto < 0 oscurece hacia el negro
+    function tono(hex, cuanto) {
+      const c = hexARgb(hex);
+      const destino = (cuanto > 0) ? 255 : 0;
+      const k = Math.abs(cuanto);
+      return "rgb(" + Math.round(c[0] + (destino - c[0]) * k) + "," +
+                      Math.round(c[1] + (destino - c[1]) * k) + "," +
+                      Math.round(c[2] + (destino - c[2]) * k) + ")";
+    }
+
+    // De donde viene la luz. Cambia estos dos numeros y cambia la
+    // iluminacion de TODOS los objetos del juego a la vez.
+    const LUZ_X = -0.34;
+    const LUZ_Y = -0.42;
+
+    // Un degradado redondo que convierte un color plano en algo con bulto
+    function volumen(r, color) {
+      const g = pincel.createRadialGradient(r * LUZ_X, r * LUZ_Y, r * 0.10,
+                                            0, 0, r * 1.18);
+      g.addColorStop(0,    tono(color,  0.58));
+      g.addColorStop(0.42, color);
+      g.addColorStop(1,    tono(color, -0.40));
+      return g;
+    }
+
+
+    // ==========================================
+    //  23c. LOS ADORNOS
+    // ==========================================
+    // Piezas pequenas que se pegan a cualquier forma. Como las pegatinas
+    // de un album: pocas piezas, muchisimas combinaciones.
+
+    function adornoTallo(r, color) {
+      pincel.strokeStyle = color || "#6b4423";
+      pincel.lineWidth = Math.max(1.6, r * 0.13);
+      pincel.lineCap = "round";
+      pincel.beginPath();
+      pincel.moveTo(0, -r * 0.86);
+      pincel.quadraticCurveTo(r * 0.10, -r * 1.16, r * 0.02, -r * 1.34);
+      pincel.stroke();
+      pincel.lineCap = "butt";
+    }
+
+    function adornoHoja(r) {
+      pincel.save();
+      pincel.translate(r * 0.16, -r * 1.12);
+      pincel.rotate(-0.55);
+      pincel.beginPath();
+      pincel.ellipse(r * 0.30, 0, r * 0.34, r * 0.15, 0, 0, Math.PI * 2);
+      pincel.fillStyle = volumen(r * 0.4, "#5cb85c");
+      pincel.fill();
+      pincel.strokeStyle = "#2f6b2f";
+      pincel.lineWidth = Math.max(1, r * 0.06);
+      pincel.stroke();
+      pincel.restore();
+    }
+
+    // El reflejo de la luz. Es lo que hace que algo parezca brillante.
+    function adornoBrillo(r) {
+      pincel.save();
+      pincel.translate(r * LUZ_X, r * LUZ_Y);
+      pincel.rotate(-0.6);
+      pincel.fillStyle = "rgba(255, 255, 255, 0.5)";
+      elipse(0, 0, r * 0.30, r * 0.15);
+      pincel.restore();
+    }
+
+    // --- Texturas (se pintan recortadas dentro de la forma) ---
+
+    function texturaPuntos(o, r) {
+      pincel.fillStyle = tono(o.color, -0.30);
+      // Posiciones fijas: si usaramos azar, "hervirian" 60 veces por segundo
+      const sitios = [[-0.42,-0.30],[0.28,-0.44],[0.46,0.18],[-0.20,0.42],
+                      [0.02,-0.06],[-0.52,0.14],[0.20,0.52],[-0.06,0.72]];
+      for (const s of sitios) {
+        circulo(s[0] * r, s[1] * r, r * 0.10);
+      }
+    }
+
+    function texturaRayas(o, r) {
+      pincel.fillStyle = o.rayas;
+      for (let i = -3; i <= 3; i++) {
+        pincel.save();
+        pincel.rotate(0.35);
+        pincel.fillRect(i * r * 0.52 - r * 0.11, -r * 1.4, r * 0.22, r * 2.8);
+        pincel.restore();
+      }
+    }
+
+    function texturaEspiral(o, r) {
+      pincel.strokeStyle = o.espiral;
+      pincel.lineWidth = r * 0.22;
+      pincel.beginPath();
+      for (let a = 0; a < Math.PI * 5.2; a += 0.18) {
+        const radio = r * 0.10 + (a / (Math.PI * 5.2)) * r * 0.95;
+        const px = Math.cos(a) * radio;
+        const py = Math.sin(a) * radio;
+        if (a === 0) pincel.moveTo(px, py); else pincel.lineTo(px, py);
+      }
+      pincel.stroke();
+    }
+
+
+    // ==========================================
+    //  23d. EL VOCABULARIO DE FORMAS
+    // ==========================================
+    // Aqui esta el truco para no dibujar 60 objetos a mano: unas pocas
+    // FORMAS que se combinan con colores y adornos. Una esfera roja con
+    // hoja es una manzana; la misma esfera en naranja y con puntitos es
+    // una naranja; en blanco con rayas rojas es un caramelo de menta.
+    //
+    // Las formas simples solo dicen su "ruta" (su silueta) y el motor se
+    // encarga del volumen, la textura y el contorno. Las complicadas se
+    // pintan ellas mismas con "pinta".
+
+    const FORMAS = {
+
+      esfera: { ruta: function (r) {
+        pincel.beginPath();
+        pincel.arc(0, 0, r, 0, Math.PI * 2);
+      }},
+
+      ovalo: { ruta: function (r, o) {
+        pincel.beginPath();
+        pincel.ellipse(0, 0, r * (o.ancho || 0.70), r, 0, 0, Math.PI * 2);
+      }},
+
+      // Una pera, o una gota. Con alReves, un caramelo de hielo.
+      gota: { ruta: function (r, o) {
+        const s = o.alReves ? -1 : 1;
+        pincel.beginPath();
+        pincel.moveTo(0, -r * s);
+        pincel.bezierCurveTo( r * 0.42, -r * 0.80 * s,  r * 0.86, -r * 0.05 * s,
+                              r * 0.74,  r * 0.48 * s);
+        pincel.bezierCurveTo( r * 0.64,  r * 1.02 * s, -r * 0.64,  r * 1.02 * s,
+                             -r * 0.74,  r * 0.48 * s);
+        pincel.bezierCurveTo(-r * 0.86, -r * 0.05 * s, -r * 0.42, -r * 0.80 * s,
+                              0,        -r * s);
+        pincel.closePath();
+      }},
+
+      // Un platano: un arco de ida y otro de vuelta, mas pequeno.
+      // Lo que queda entre los dos es la media luna.
+      medialuna: { pinta: function (o, r) {
+        pincel.save();
+        pincel.rotate(0.28);
+
+        pincel.beginPath();
+        pincel.arc(0, r * 0.62, r * 1.15, Math.PI * 1.18, Math.PI * 1.82);
+        pincel.arc(0, r * 0.62, r * 0.62, Math.PI * 1.82, Math.PI * 1.18, true);
+        pincel.closePath();
+
+        // La luz cae por el lomo de arriba y la sombra queda por dentro
+        const g = pincel.createLinearGradient(0, -r * 0.95, 0, r * 0.25);
+        g.addColorStop(0,    tono(o.color,  0.48));
+        g.addColorStop(0.55, o.color);
+        g.addColorStop(1,    tono(o.color, -0.30));
+        pincel.fillStyle = g;
+        pincel.fill();
+
+        pincel.strokeStyle = tono(o.color, -0.50);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+
+        // Las dos puntitas oscuras del platano
+        pincel.fillStyle = tono(o.color, -0.60);
+        circulo(-r * 0.75, r * 0.15, r * 0.11);
+        circulo( r * 0.75, r * 0.15, r * 0.11);
+
+        pincel.restore();
+      }},
+
+      // Una estrella de las puntas que quieras
+      estrella: { ruta: function (r, o) {
+        const puntas = o.puntas || 5;
+        const dentro = r * (o.gordura || 0.46);
+        pincel.beginPath();
+        for (let i = 0; i < puntas * 2; i++) {
+          const radio = (i % 2 === 0) ? r : dentro;
+          const a = (i * Math.PI) / puntas - Math.PI / 2;
+          const px = Math.cos(a) * radio;
+          const py = Math.sin(a) * radio;
+          if (i === 0) pincel.moveTo(px, py); else pincel.lineTo(px, py);
+        }
+        pincel.closePath();
+      }},
+
+      corazon: { ruta: function (r) {
+        pincel.beginPath();
+        pincel.moveTo(0, r * 0.88);
+        pincel.bezierCurveTo(-r * 1.30,  r * 0.02, -r * 0.72, -r * 1.06, 0, -r * 0.34);
+        pincel.bezierCurveTo( r * 0.72, -r * 1.06,  r * 1.30,  r * 0.02, 0,  r * 0.88);
+        pincel.closePath();
+      }},
+
+      // Un trozo de sandia
+      porcion: { pinta: function (o, r) {
+        pincel.save();
+        pincel.rotate(-0.25);
+        // la corteza
+        pincel.beginPath();
+        pincel.moveTo(0, r * 0.85);
+        pincel.arc(0, r * 0.85, r * 1.55, -Math.PI * 0.78, -Math.PI * 0.22);
+        pincel.closePath();
+        pincel.fillStyle = volumen(r, o.corteza || "#4f9c36");
+        pincel.fill();
+        pincel.strokeStyle = tono(o.corteza || "#4f9c36", -0.5);
+        pincel.lineWidth = r * 0.09;
+        pincel.stroke();
+        // la carne
+        pincel.beginPath();
+        pincel.moveTo(0, r * 0.85);
+        pincel.arc(0, r * 0.85, r * 1.24, -Math.PI * 0.76, -Math.PI * 0.24);
+        pincel.closePath();
+        pincel.fillStyle = volumen(r, o.color);
+        pincel.fill();
+        // las pipas
+        pincel.fillStyle = "#3a2415";
+        [[-0.5,-0.22],[0,-0.34],[0.5,-0.22],[-0.26,0.06],[0.26,0.06]].forEach(
+          function (s) { elipse(s[0] * r, r * 0.85 + s[1] * r - r * 0.55,
+                                r * 0.09, r * 0.13); });
+        pincel.restore();
+      }},
+
+      // Un racimo: muchas bolitas juntas
+      racimo: { pinta: function (o, r) {
+        const sitios = [[0,-0.62],[-0.44,-0.20],[0.44,-0.20],[-0.22,0.24],
+                        [0.22,0.24],[0,0.70]];
+        for (const s of sitios) {
+          pincel.beginPath();
+          pincel.arc(s[0] * r, s[1] * r, r * 0.40, 0, Math.PI * 2);
+          pincel.fillStyle = volumen(r * 0.4, o.color);
+          pincel.fill();
+          pincel.strokeStyle = tono(o.color, -0.5);
+          pincel.lineWidth = r * 0.06;
+          pincel.stroke();
+        }
+        if (o.hoja) adornoHoja(r * 0.8);
+      }},
+
+      // Un cubito de hielo, en perspectiva
+      cubo: { pinta: function (o, r) {
+        const a = r * 0.80;      // media anchura
+        const h = r * 0.42;      // la "tapa" en perspectiva
+        // la cara de arriba
+        pincel.beginPath();
+        pincel.moveTo(0, -a - h * 0.5);
+        pincel.lineTo(a, -a + h * 0.5);
+        pincel.lineTo(0, -a + h * 1.5);
+        pincel.lineTo(-a, -a + h * 0.5);
+        pincel.closePath();
+        pincel.fillStyle = tono(o.color, 0.55);
+        pincel.fill();
+        // la cara izquierda
+        pincel.beginPath();
+        pincel.moveTo(-a, -a + h * 0.5);
+        pincel.lineTo(0, -a + h * 1.5);
+        pincel.lineTo(0, a + h * 0.5);
+        pincel.lineTo(-a, a - h * 0.5);
+        pincel.closePath();
+        pincel.fillStyle = o.color;
+        pincel.fill();
+        // la cara derecha, en sombra
+        pincel.beginPath();
+        pincel.moveTo(a, -a + h * 0.5);
+        pincel.lineTo(0, -a + h * 1.5);
+        pincel.lineTo(0, a + h * 0.5);
+        pincel.lineTo(a, a - h * 0.5);
+        pincel.closePath();
+        pincel.fillStyle = tono(o.color, -0.28);
+        pincel.fill();
+        // el contorno de toda la silueta
+        pincel.beginPath();
+        pincel.moveTo(0, -a - h * 0.5);
+        pincel.lineTo(a, -a + h * 0.5);
+        pincel.lineTo(a, a - h * 0.5);
+        pincel.lineTo(0, a + h * 0.5);
+        pincel.lineTo(-a, a - h * 0.5);
+        pincel.lineTo(-a, -a + h * 0.5);
+        pincel.closePath();
+        pincel.strokeStyle = tono(o.color, -0.5);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // un destello
+        pincel.fillStyle = "rgba(255,255,255,0.55)";
+        pincel.fillRect(-a * 0.62, -a * 0.10, a * 0.22, a * 0.85);
+      }},
+
+      moneda: { pinta: function (o, r) {
+        pincel.beginPath();
+        pincel.ellipse(0, 0, r * 0.80, r * 0.96, 0, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.45);
+        pincel.lineWidth = r * 0.10;
+        pincel.stroke();
+        // el borde interior
+        pincel.beginPath();
+        pincel.ellipse(0, 0, r * 0.55, r * 0.70, 0, 0, Math.PI * 2);
+        pincel.strokeStyle = tono(o.color, -0.28);
+        pincel.lineWidth = r * 0.09;
+        pincel.stroke();
+        // una estrellita en el centro
+        pincel.save();
+        pincel.scale(0.34, 0.40);
+        FORMAS.estrella.ruta(r, { puntas: 5, gordura: 0.45 });
+        pincel.fillStyle = tono(o.color, -0.25);
+        pincel.fill();
+        pincel.restore();
+        adornoBrillo(r * 0.9);
+      }},
+
+      bomba: { pinta: function (o, r) {
+        // la mecha
+        pincel.strokeStyle = "#8a7a5a";
+        pincel.lineWidth = r * 0.13;
+        pincel.lineCap = "round";
+        pincel.beginPath();
+        pincel.moveTo(r * 0.30, -r * 0.72);
+        pincel.quadraticCurveTo(r * 0.86, -r * 1.06, r * 0.66, -r * 1.42);
+        pincel.stroke();
+        pincel.lineCap = "butt";
+        // el cuerpo
+        pincel.beginPath();
+        pincel.arc(0, r * 0.10, r * 0.86, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r, "#3c3a52");
+        pincel.fill();
+        pincel.strokeStyle = "#16151f";
+        pincel.lineWidth = r * 0.09;
+        pincel.stroke();
+        // la tapita de arriba
+        pincel.fillStyle = "#5a5670";
+        pincel.fillRect(-r * 0.24, -r * 0.96, r * 0.48, r * 0.26);
+        // la chispa, que late
+        const chispa = 0.75 + Math.sin(reloj / 3) * 0.25;
+        pincel.save();
+        pincel.translate(r * 0.66, -r * 1.44);
+        pincel.scale(chispa, chispa);
+        FORMAS.estrella.ruta(r * 0.42, { puntas: 6, gordura: 0.30 });
+        pincel.fillStyle = "#ffd166";
+        pincel.fill();
+        FORMAS.estrella.ruta(r * 0.24, { puntas: 6, gordura: 0.30 });
+        pincel.fillStyle = "#fff3c4";
+        pincel.fill();
+        pincel.restore();
+        adornoBrillo(r * 0.85);
+      }},
+
+      iman: { pinta: function (o, r) {
+        pincel.lineCap = "butt";
+        // la herradura
+        pincel.beginPath();
+        pincel.arc(0, r * 0.16, r * 0.72, Math.PI, 0);
+        pincel.lineTo(r * 0.72, r * 0.62);
+        pincel.lineTo(r * 0.34, r * 0.62);
+        pincel.lineTo(r * 0.34, r * 0.16);
+        pincel.arc(0, r * 0.16, r * 0.34, 0, Math.PI, true);
+        pincel.lineTo(-r * 0.34, r * 0.62);
+        pincel.lineTo(-r * 0.72, r * 0.62);
+        pincel.closePath();
+        const g = pincel.createLinearGradient(-r, 0, r, 0);
+        g.addColorStop(0,   tono(o.color,  0.45));
+        g.addColorStop(0.5, o.color);
+        g.addColorStop(1,   tono(o.color, -0.35));
+        pincel.fillStyle = g;
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.55);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // las dos puntas: una roja y otra azul
+        pincel.fillStyle = "#e63946";
+        pincel.fillRect(-r * 0.74, r * 0.44, r * 0.42, r * 0.30);
+        pincel.fillStyle = "#457bff";
+        pincel.fillRect( r * 0.32, r * 0.44, r * 0.42, r * 0.30);
+      }},
+
+      copo: { pinta: function (o, r) {
+        pincel.strokeStyle = o.color;
+        pincel.lineWidth = r * 0.15;
+        pincel.lineCap = "round";
+        for (let i = 0; i < 6; i++) {
+          pincel.save();
+          pincel.rotate((i * Math.PI) / 3);
+          pincel.beginPath();
+          pincel.moveTo(0, 0);
+          pincel.lineTo(0, -r);
+          pincel.moveTo(0, -r * 0.60);
+          pincel.lineTo( r * 0.30, -r * 0.82);
+          pincel.moveTo(0, -r * 0.60);
+          pincel.lineTo(-r * 0.30, -r * 0.82);
+          pincel.stroke();
+          pincel.restore();
+        }
+        pincel.fillStyle = "#ffffff";
+        circulo(0, 0, r * 0.18);
+        pincel.lineCap = "butt";
+      }},
+
+      cohete: { pinta: function (o, r) {
+        // la llama, que tiembla
+        const llama = 0.8 + Math.sin(reloj / 2.5) * 0.2;
+        pincel.beginPath();
+        pincel.moveTo(-r * 0.26, r * 0.86);
+        pincel.quadraticCurveTo(0, r * (1.05 + 0.55 * llama), r * 0.26, r * 0.86);
+        pincel.closePath();
+        pincel.fillStyle = "#ff9f1c";
+        pincel.fill();
+        // el cuerpo
+        pincel.beginPath();
+        pincel.moveTo(0, -r * 1.05);
+        pincel.quadraticCurveTo( r * 0.52, -r * 0.35,  r * 0.44, r * 0.86);
+        pincel.lineTo(-r * 0.44, r * 0.86);
+        pincel.quadraticCurveTo(-r * 0.52, -r * 0.35, 0, -r * 1.05);
+        pincel.closePath();
+        pincel.fillStyle = volumen(r, "#f2f4f8");
+        pincel.fill();
+        pincel.strokeStyle = "#8d99ae";
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // las aletas
+        pincel.fillStyle = o.color;
+        [-1, 1].forEach(function (lado) {
+          pincel.beginPath();
+          pincel.moveTo(lado * r * 0.42, r * 0.30);
+          pincel.lineTo(lado * r * 0.90, r * 0.90);
+          pincel.lineTo(lado * r * 0.42, r * 0.86);
+          pincel.closePath();
+          pincel.fill();
+        });
+        // la punta
+        pincel.beginPath();
+        pincel.moveTo(0, -r * 1.05);
+        pincel.quadraticCurveTo( r * 0.34, -r * 0.62, r * 0.30, -r * 0.42);
+        pincel.lineTo(-r * 0.30, -r * 0.42);
+        pincel.quadraticCurveTo(-r * 0.34, -r * 0.62, 0, -r * 1.05);
+        pincel.closePath();
+        pincel.fillStyle = o.color;
+        pincel.fill();
+        // la ventanilla
+        pincel.beginPath();
+        pincel.arc(0, r * 0.02, r * 0.24, 0, Math.PI * 2);
+        pincel.fillStyle = "#8ecae6";
+        pincel.fill();
+        pincel.strokeStyle = "#4a6fa5";
+        pincel.lineWidth = r * 0.08;
+        pincel.stroke();
+      }},
+
+      nave: { pinta: function (o, r) {
+        // la cupula
+        pincel.beginPath();
+        pincel.arc(0, r * 0.05, r * 0.52, Math.PI, 0);
+        pincel.closePath();
+        pincel.fillStyle = volumen(r * 0.6, "#a8e6ff");
+        pincel.fill();
+        pincel.strokeStyle = "#4a89a8";
+        pincel.lineWidth = r * 0.08;
+        pincel.stroke();
+        // el platillo
+        pincel.beginPath();
+        pincel.ellipse(0, r * 0.16, r, r * 0.34, 0, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.5);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // las lucecitas, que se encienden por turnos
+        for (let i = -2; i <= 2; i++) {
+          const encendida = ((Math.floor(reloj / 8) + i + 5) % 5 === 0);
+          pincel.fillStyle = encendida ? "#fff3b0" : tono(o.color, -0.35);
+          circulo(i * r * 0.34, r * 0.22, r * 0.10);
+        }
+      }},
+
+      caramelo: { pinta: function (o, r) {
+        // los dos picos del envoltorio
+        pincel.fillStyle = tono(o.color, 0.30);
+        [-1, 1].forEach(function (lado) {
+          pincel.beginPath();
+          pincel.moveTo(lado * r * 0.44, 0);
+          pincel.lineTo(lado * r * 1.10, -r * 0.42);
+          pincel.lineTo(lado * r * 1.10,  r * 0.42);
+          pincel.closePath();
+          pincel.fill();
+          pincel.strokeStyle = tono(o.color, -0.40);
+          pincel.lineWidth = r * 0.07;
+          pincel.stroke();
+        });
+        // el caramelo
+        pincel.beginPath();
+        pincel.ellipse(0, 0, r * 0.56, r * 0.62, 0, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r * 0.7, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.5);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        adornoBrillo(r * 0.7);
+      }},
+
+      concha: { pinta: function (o, r) {
+        pincel.beginPath();
+        pincel.moveTo(0, r * 0.86);
+        pincel.arc(0, r * 0.86, r * 1.10, -Math.PI * 0.92, -Math.PI * 0.08);
+        pincel.closePath();
+        pincel.fillStyle = volumen(r, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.45);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // las nervaduras
+        pincel.strokeStyle = tono(o.color, -0.28);
+        pincel.lineWidth = r * 0.07;
+        for (let i = -2; i <= 2; i++) {
+          pincel.beginPath();
+          pincel.moveTo(0, r * 0.86);
+          pincel.lineTo(i * r * 0.44, r * 0.86 - r * 1.02);
+          pincel.stroke();
+        }
+      }},
+
+      pez: { pinta: function (o, r) {
+        // la cola
+        pincel.beginPath();
+        pincel.moveTo(-r * 0.42, 0);
+        pincel.lineTo(-r * 1.05, -r * 0.44);
+        pincel.lineTo(-r * 1.05,  r * 0.44);
+        pincel.closePath();
+        pincel.fillStyle = tono(o.color, -0.20);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.5);
+        pincel.lineWidth = r * 0.075;
+        pincel.stroke();
+        // el cuerpo
+        pincel.beginPath();
+        pincel.ellipse(r * 0.10, 0, r * 0.68, r * 0.48, 0, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r * 0.8, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.5);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // el ojo
+        pincel.fillStyle = "#ffffff";
+        circulo(r * 0.42, -r * 0.12, r * 0.15);
+        pincel.fillStyle = "#22212c";
+        circulo(r * 0.46, -r * 0.12, r * 0.08);
+      }},
+
+      muneco: { pinta: function (o, r) {
+        // el cuerpo
+        pincel.beginPath();
+        pincel.arc(0, r * 0.42, r * 0.60, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r * 0.7, o.color);
+        pincel.fill();
+        pincel.strokeStyle = "#9db8cc";
+        pincel.lineWidth = r * 0.08;
+        pincel.stroke();
+        // la cabeza
+        pincel.beginPath();
+        pincel.arc(0, -r * 0.46, r * 0.42, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r * 0.5, o.color);
+        pincel.fill();
+        pincel.stroke();
+        // la cara
+        pincel.fillStyle = "#22212c";
+        circulo(-r * 0.15, -r * 0.54, r * 0.07);
+        circulo( r * 0.15, -r * 0.54, r * 0.07);
+        pincel.fillStyle = "#ff8c42";
+        pincel.beginPath();
+        pincel.moveTo(0, -r * 0.42);
+        pincel.lineTo(r * 0.34, -r * 0.34);
+        pincel.lineTo(0, -r * 0.28);
+        pincel.closePath();
+        pincel.fill();
+        // los botones
+        pincel.fillStyle = "#3c3a52";
+        circulo(0, r * 0.24, r * 0.08);
+        circulo(0, r * 0.54, r * 0.08);
+      }},
+
+      donut: { pinta: function (o, r) {
+        // la masa
+        pincel.beginPath();
+        pincel.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+        pincel.arc(0, 0, r * 0.32, 0, Math.PI * 2, true);
+        pincel.fillStyle = volumen(r, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.45);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // el glaseado, con una onda por abajo
+        pincel.save();
+        pincel.beginPath();
+        pincel.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+        pincel.arc(0, 0, r * 0.32, 0, Math.PI * 2, true);
+        pincel.clip();
+        pincel.beginPath();
+        pincel.moveTo(-r, -r);
+        pincel.lineTo(r, -r);
+        pincel.lineTo(r, r * 0.30);
+        for (let x = r; x >= -r; x -= r * 0.25) {
+          pincel.lineTo(x, r * 0.30 + Math.sin(x / (r * 0.22)) * r * 0.16);
+        }
+        pincel.closePath();
+        pincel.fillStyle = o.glaseado || "#ff9ec7";
+        pincel.fill();
+        // los fideos de colores
+        const fideos = ["#ffffff","#ffd60a","#7ee081","#8ecae6","#ff70a6"];
+        const sitios = [[-0.5,-0.5],[0,-0.62],[0.5,-0.48],[-0.62,-0.12],
+                        [0.62,-0.14],[-0.24,-0.72],[0.28,-0.20],[-0.12,-0.28]];
+        for (let i = 0; i < sitios.length; i++) {
+          pincel.save();
+          pincel.translate(sitios[i][0] * r, sitios[i][1] * r);
+          pincel.rotate(i * 1.1);
+          pincel.fillStyle = fideos[i % fideos.length];
+          pincel.fillRect(-r * 0.13, -r * 0.05, r * 0.26, r * 0.10);
+          pincel.restore();
+        }
+        pincel.restore();
+      }},
+
+      anillado: { pinta: function (o, r) {
+        // el anillo de detras
+        pincel.save();
+        pincel.rotate(-0.35);
+        pincel.strokeStyle = tono(o.anillo || "#ffd6a5", -0.25);
+        pincel.lineWidth = r * 0.20;
+        pincel.beginPath();
+        pincel.ellipse(0, 0, r * 1.32, r * 0.36, 0, Math.PI, Math.PI * 2);
+        pincel.stroke();
+        pincel.restore();
+        // el planeta
+        pincel.beginPath();
+        pincel.arc(0, 0, r * 0.76, 0, Math.PI * 2);
+        pincel.fillStyle = volumen(r, o.color);
+        pincel.fill();
+        pincel.strokeStyle = tono(o.color, -0.5);
+        pincel.lineWidth = r * 0.085;
+        pincel.stroke();
+        // los crateres
+        pincel.save();
+        pincel.beginPath();
+        pincel.arc(0, 0, r * 0.76, 0, Math.PI * 2);
+        pincel.clip();
+        pincel.fillStyle = tono(o.color, -0.28);
+        circulo(-r * 0.26, -r * 0.18, r * 0.16);
+        circulo( r * 0.22,  r * 0.24, r * 0.12);
+        pincel.restore();
+        // el anillo de delante
+        pincel.save();
+        pincel.rotate(-0.35);
+        pincel.strokeStyle = o.anillo || "#ffd6a5";
+        pincel.lineWidth = r * 0.20;
+        pincel.beginPath();
+        pincel.ellipse(0, 0, r * 1.32, r * 0.36, 0, 0, Math.PI);
+        pincel.stroke();
+        pincel.restore();
+        adornoBrillo(r * 0.8);
+      }}
+    };
+
+
+    // ==========================================
+    //  23e. EL MOTOR DE OBJETOS
+    // ==========================================
+    // Una sola funcion para dibujar cualquier objeto del juego. Le da
+    // volumen, le pega la textura recortada dentro, le pone el contorno
+    // y le anade los adornos. Todo con la misma luz.
+
+    function dibujarObjeto(o, r) {
+      const forma = FORMAS[o.forma] || FORMAS.esfera;
+
+      // Las formas complicadas se pintan ellas solas
+      if (forma.pinta) { forma.pinta(o, r); return; }
+
+      // 1) El cuerpo, con volumen
+      forma.ruta(r, o);
+      pincel.fillStyle = volumen(r, o.color);
+      pincel.fill();
+
+      // 2) La textura, recortada dentro del cuerpo
+      if (o.puntos || o.rayas || o.espiral) {
+        pincel.save();
+        forma.ruta(r, o);
+        pincel.clip();
+        if (o.puntos)  texturaPuntos(o, r);
+        if (o.rayas)   texturaRayas(o, r);
+        if (o.espiral) texturaEspiral(o, r);
+        pincel.restore();
+      }
+
+      // 3) El contorno, del color del objeto pero oscuro
+      forma.ruta(r, o);
+      pincel.strokeStyle = tono(o.color, -0.52);
+      pincel.lineWidth = Math.max(1.2, r * 0.085);
+      pincel.stroke();
+
+      // 4) Adornos y reflejo
+      if (o.tallo) adornoTallo(r, o.tallo === true ? null : o.tallo);
+      if (o.hoja)  adornoHoja(r);
+      if (o.brillo !== false) adornoBrillo(r);
+    }
+
+
+    // ==========================================
+    //  24. LA PALETA DEL MOMENTO
+    // ==========================================
+    // Mientras cambias de mundo estas "entre dos mundos": esta funcion
+    // mezcla las dos paletas segun lo avanzada que este la transicion.
+    // Es la misma idea del dia y la noche, pero con mundos enteros.
+
+    // ¿Cuanto de noche es ahora mismo? 0 = pleno dia, 1 = noche cerrada.
+    // Un dia entero dura AJUSTES.pasosPorDia. La PRIMERA mitad es de dia
+    // y la segunda va oscureciendo, hace de noche, y vuelve a amanecer.
+    function factorNoche() {
+      const vuelta = (relojDia % AJUSTES.pasosPorDia) / AJUSTES.pasosPorDia;
+      const onda = Math.sin(vuelta * Math.PI * 2);
+
+      // Nos quedamos solo con la parte en la que la onda BAJA.
+      // Mientras sube, el resultado es 0: sigue siendo de dia.
+      return Math.max(0, -onda);
+    }
+
+    function paletaActual() {
+      const a = MUNDOS[mundoAnterior];
+      const b = MUNDOS[mundoActual];
+      const t = transicion;
+      const n = factorNoche();
+
+      // Cada color se mezcla DOS veces seguidas:
+      //   1) entre los dos mundos (por si estamos cambiando de mundo)
+      //   2) hacia el color de la noche
+      function color(cual) {
+        const deDia = mezclarLista(a[cual], b[cual], t);
+        return mezclarLista(deDia, NOCHE, n * AJUSTES.fuerzaDeLaNoche);
+      }
+
+      return {
+        cieloArriba: color("cieloArriba"),
+        cieloAbajo:  color("cieloAbajo"),
+        colinaLejos: color("colinaLejos"),
+        colinaCerca: color("colinaCerca"),
+        suelo:       color("suelo"),
+        sueloClaro:  color("sueloClaro"),
+        detalle:     color("detalle"),
+
+        // El sol se apaga de noche
+        sol:       entre(a.sol, b.sol, t) * (1 - n),
+        // Y la luna se enciende
+        luna:      n,
+        // Las estrellas: las del mundo, o las de la noche, la que gane
+        estrellas: Math.max(entre(a.estrellas, b.estrellas, t), n * 0.95),
+        planeta:   entre(a.planeta, b.planeta, t),
+        nubes:     entre(a.nubes,   b.nubes,   t) * (1 - n * 0.7),
+        adornos:   (t < 0.5) ? a.adornos : b.adornos,
+        noche:     n
+      };
+    }
+
+    // El menu usa El Campo oscurecido, para que se lea bien el texto
+    function paletaDelMenu() {
+      const m = MUNDOS[0];
+      const oscuro = [10, 14, 40];
+      const t = 0.55;
+      return {
+        cieloArriba: mezclarLista(m.cieloArriba, oscuro, t),
+        cieloAbajo:  mezclarLista(m.cieloAbajo,  oscuro, t),
+        colinaLejos: mezclarLista(m.colinaLejos, oscuro, t),
+        colinaCerca: mezclarLista(m.colinaCerca, oscuro, t),
+        suelo:       mezclarLista(m.suelo,       oscuro, t),
+        sueloClaro:  mezclarLista(m.sueloClaro,  oscuro, t),
+        detalle:     mezclarLista(m.detalle,     oscuro, t),
+        sol: 0, luna: 0.9, estrellas: 0.85, planeta: 0, nubes: 0.25,
+        adornos: m.adornos, noche: 0.8
+      };
+    }
+
+
+    // ==========================================
+    //  25. EL DECORADO
+    // ==========================================
+
+    function dibujarFondo(p) {
+
+      const cielo = pincel.createLinearGradient(0, 0, 0, SUELO_Y);
+      cielo.addColorStop(0, aColor(p.cieloArriba));
+      cielo.addColorStop(1, aColor(p.cieloAbajo));
+      pincel.fillStyle = cielo;
+      pincel.fillRect(0, 0, pantalla.width, pantalla.height);
+
+      // Estrellas
+      if (p.estrellas > 0.02) {
+        pincel.fillStyle = "white";
+        for (const e of estrellasFondo) {
+          const brillo = 0.55 + 0.45 * Math.sin(reloj / 24 + e.fase);
+          pincel.globalAlpha = p.estrellas * brillo;
+          pincel.fillRect(e.x, e.y, e.tamano, e.tamano);
+        }
+        pincel.globalAlpha = 1;
+      }
+
+      // Sol
+      if (p.sol > 0.02) {
+        pincel.globalAlpha = p.sol * 0.22;
+        pincel.fillStyle = "#ffe9a8";
+        circulo(388, 88, 46);
+        pincel.globalAlpha = p.sol;
+        pincel.fillStyle = "#ffd85e";
+        circulo(388, 88, 26);
+        pincel.globalAlpha = 1;
+      }
+
+      // Un planeta gigante con anillo (solo en Marte)
+      if (p.planeta > 0.02) {
+        pincel.globalAlpha = p.planeta;
+        pincel.fillStyle = "#c1655a";
+        circulo(94, 150, 40);
+        pincel.fillStyle = "rgba(90, 40, 40, 0.45)";
+        circulo(80, 138, 12);
+        circulo(106, 165, 8);
+        pincel.strokeStyle = "rgba(255, 210, 160, 0.7)";
+        pincel.lineWidth = 4;
+        pincel.beginPath();
+        pincel.ellipse(94, 150, 62, 14, -0.35, 0, Math.PI * 2);
+        pincel.stroke();
+        pincel.globalAlpha = 1;
+      }
+
+      // La luna: sale cuando se hace de noche
+      if (p.luna > 0.03) {
+        pincel.globalAlpha = p.luna * 0.20;
+        pincel.fillStyle = "#f3f0d8";
+        circulo(96, 118, 44);                      // el halo
+        pincel.globalAlpha = p.luna;
+        pincel.fillStyle = "#f6f3dd";
+        circulo(96, 118, 23);
+        // Un mordisco del color del cielo, para que sea creciente
+        pincel.fillStyle = aColor(p.cieloArriba);
+        circulo(84, 111, 20);
+        pincel.globalAlpha = 1;
+      }
+
+      // Nubes: cada mundo dice cuantas tiene, y de noche se ven menos
+      const nubosidad = p.nubes;
+      if (nubosidad > 0.10) {
+        pincel.fillStyle = "#ffffff";
+        for (const n of nubes) {
+          pincel.globalAlpha = nubosidad * 0.7;
+          const s = n.escala;
+          circulo(n.x,          n.y,         17 * s);
+          circulo(n.x + 21 * s, n.y + 5 * s, 23 * s);
+          circulo(n.x + 46 * s, n.y + 1 * s, 15 * s);
+          pincel.fillRect(n.x - 17 * s, n.y, 63 * s, 13 * s);
+        }
+        pincel.globalAlpha = 1;
+      }
+
+      // BRUMA: el aire junto al horizonte se ve mas claro. Es lo que
+      // hace que las colinas parezcan estar LEJOS de verdad.
+      const bruma = pincel.createLinearGradient(0, SUELO_Y - 130, 0, SUELO_Y);
+      bruma.addColorStop(0, "rgba(255,255,255,0)");
+      bruma.addColorStop(1, "rgba(" + Math.round(p.cieloAbajo[0]) + "," +
+                                      Math.round(p.cieloAbajo[1]) + "," +
+                                      Math.round(p.cieloAbajo[2]) + ",0.55)");
+      pincel.fillStyle = bruma;
+      pincel.fillRect(0, SUELO_Y - 130, pantalla.width, 130);
+
+      // Colinas: la de lejos, y encima una capa de bruma sobre ella
+      dibujarColinas(SUELO_Y - 62, 26, 120, 0.35, aColor(p.colinaLejos));
+
+      pincel.globalAlpha = 0.28;
+      pincel.fillStyle = aColor(p.cieloAbajo);
+      pincel.fillRect(0, SUELO_Y - 90, pantalla.width, 90);
+      pincel.globalAlpha = 1;
+
+      dibujarColinas(SUELO_Y - 30, 20,  85, 2.10, aColor(p.colinaCerca));
+
+      // LUZ DE CANTO: el borde de arriba de la colina cercana recibe la
+      // luz del cielo. Un detalle diminuto que la separa del fondo.
+      pincel.save();
+      pincel.globalAlpha = 0.5;
+      pincel.strokeStyle = aColor(mezclarLista(p.colinaCerca, [255,255,255], 0.45));
+      pincel.lineWidth = 2;
+      pincel.beginPath();
+      for (let x = 0; x <= pantalla.width; x += 6) {
+        const yy = (SUELO_Y - 30) + Math.sin(x / 85 + 2.10) * 20;
+        if (x === 0) pincel.moveTo(x, yy); else pincel.lineTo(x, yy);
+      }
+      pincel.stroke();
+      pincel.restore();
+
+      // Suelo
+      pincel.fillStyle = aColor(p.suelo);
+      pincel.fillRect(0, SUELO_Y, pantalla.width, pantalla.height - SUELO_Y);
+      pincel.fillStyle = aColor(p.sueloClaro);
+      pincel.fillRect(0, SUELO_Y, pantalla.width, 5);
+
+      // Briznas: hierba, arena, nieve, polvo o azucar, segun el mundo
+      pincel.strokeStyle = aColor(p.detalle);
+      pincel.lineWidth = 2;
+      for (const h of hierba) {
+        pincel.beginPath();
+        pincel.moveTo(h.x, SUELO_Y + 4);
+        pincel.lineTo(h.x + h.ladeo, SUELO_Y + 4 - h.alto);
+        pincel.stroke();
+      }
+
+      // Adornitos del suelo
+      for (const a of adornosSuelo) {
+        pincel.fillStyle = p.adornos[a.cual];
+        circulo(a.x, a.y, 2.4);
+      }
+    }
+
+    function dibujarColinas(yBase, amplitud, anchura, desfase, color) {
+      pincel.fillStyle = color;
+      pincel.beginPath();
+      pincel.moveTo(0, pantalla.height);
+      for (let x = 0; x <= pantalla.width; x += 6) {
+        pincel.lineTo(x, yBase + Math.sin(x / anchura + desfase) * amplitud);
+      }
+      pincel.lineTo(pantalla.width, pantalla.height);
+      pincel.closePath();
+      pincel.fill();
+    }
+
+
+    // ==========================================
+    //  26. SOMBRAS Y AURAS
+    // ==========================================
+
+    function dibujarSombras() {
+      pincel.fillStyle = "rgba(0, 0, 0, 1)";
+
+      for (const cosa of cosas) {
+        let cerca = cosa.y / SUELO_Y;
+        if (cerca < 0) cerca = 0;
+        if (cerca > 1) cerca = 1;
+        pincel.globalAlpha = 0.05 + cerca * 0.25;
+        elipse(cosa.x, SUELO_Y + 6, 22 - cerca * 9, 6 - cerca * 2.5);
+      }
+
+      for (const j of enJuego()) {
+        if (!j.viva) continue;
+        pincel.globalAlpha = 0.3;
+        elipse(j.x + j.ancho / 2, SUELO_Y + 5, j.ancho * 0.44, 7);
+      }
+      pincel.globalAlpha = 1;
+    }
+
+    function dibujarAuras() {
+      for (const j of enJuego()) {
+        if (j.efectoIman <= 0 || !j.viva) continue;
+
+        const cx = j.x + j.ancho / 2;
+        const cy = j.y + j.alto / 2;
+
+        let intensidad = 1;
+        if (j.efectoIman < 60) intensidad = (j.efectoIman % 12 < 7) ? 1 : 0.25;
+
+        pincel.strokeStyle = "#c99bff";
+        for (let i = 0; i < 3; i++) {
+          const pulso = (reloj / 22 + i / 3) % 1;
+          pincel.globalAlpha = (1 - pulso) * 0.5 * intensidad;
+          pincel.lineWidth = 3;
+          pincel.beginPath();
+          pincel.arc(cx, cy, 40 + pulso * 95, 0, Math.PI * 2);
+          pincel.stroke();
+        }
+        pincel.globalAlpha = 1;
+      }
+    }
+
+
+    // ==========================================
+    //  27. LAS CESTAS
+    // ==========================================
+
+    function dibujarCesta(j) {
+      const c = j.colores;
+      const w = j.ancho;
+      const h = j.alto;
+      const x = j.x;
+      const y = j.y + j.rebote;
+      const estrechez = 12;
+
+      pincel.globalAlpha = j.viva ? 1 : 0.3;   // eliminada = tenue
+
+      pincel.save();
+      pincel.translate(x + w / 2, y + h / 2);
+      pincel.rotate(j.inclinacion);
+      pincel.translate(-(x + w / 2), -(y + h / 2));
+
+      // ---- El asa, por detras: dos trazos para darle grosor ----
+      pincel.lineCap = "round";
+      pincel.strokeStyle = c.bordeOsc;
+      pincel.lineWidth = 8;
+      pincel.beginPath();
+      pincel.arc(x + w / 2, y + 3, w * 0.29, Math.PI * 1.03, Math.PI * 1.97);
+      pincel.stroke();
+      pincel.strokeStyle = c.asa;
+      pincel.lineWidth = 5;
+      pincel.beginPath();
+      pincel.arc(x + w / 2, y + 3, w * 0.29, Math.PI * 1.03, Math.PI * 1.97);
+      pincel.stroke();
+      pincel.lineCap = "butt";
+
+      // ---- El cuerpo: un cuenco de lados curvos, no un trapecio ----
+      function rutaCuenco() {
+        pincel.beginPath();
+        pincel.moveTo(x, y);
+        pincel.quadraticCurveTo(x + estrechez * 0.2, y + h * 0.72,
+                                x + estrechez, y + h - 4);
+        pincel.quadraticCurveTo(x + w / 2, y + h + 5,
+                                x + w - estrechez, y + h - 4);
+        pincel.quadraticCurveTo(x + w - estrechez * 0.2, y + h * 0.72,
+                                x + w, y);
+        pincel.closePath();
+      }
+
+      const madera = pincel.createLinearGradient(x, 0, x + w, 0);
+      madera.addColorStop(0,    c.osc);
+      madera.addColorStop(0.32, c.cla);
+      madera.addColorStop(1,    c.osc);
+
+      rutaCuenco();
+      pincel.fillStyle = madera;
+      pincel.fill();
+
+      // ---- El mimbre trenzado, recortado dentro del cuenco ----
+      pincel.save();
+      rutaCuenco();
+      pincel.clip();
+
+      pincel.strokeStyle = "rgba(40, 25, 10, 0.28)";
+      pincel.lineWidth = 2.5;
+      for (let i = 1; i < 4; i++) {
+        const yy = y + (h / 4) * i;
+        pincel.beginPath();
+        pincel.moveTo(x - 8, yy);
+        pincel.quadraticCurveTo(x + w / 2, yy + 4, x + w + 8, yy);
+        pincel.stroke();
+      }
+      pincel.lineWidth = 2;
+      for (let i = 0; i <= 11; i++) {
+        const xx = x + (w / 11) * i;
+        pincel.beginPath();
+        pincel.moveTo(xx, y);
+        pincel.lineTo(xx + (xx - (x + w / 2)) * -0.06, y + h + 6);
+        pincel.stroke();
+      }
+
+      // La sombra de dentro, junto al borde de arriba
+      const dentro = pincel.createLinearGradient(0, y, 0, y + 18);
+      dentro.addColorStop(0, "rgba(28, 14, 4, 0.55)");
+      dentro.addColorStop(1, "rgba(28, 14, 4, 0)");
+      pincel.fillStyle = dentro;
+      pincel.fillRect(x - 8, y, w + 16, 18);
+
+      // Un poco de luz rebotando en el fondo del cuenco
+      const rebote = pincel.createLinearGradient(0, y + h - 14, 0, y + h + 4);
+      rebote.addColorStop(0, "rgba(255, 236, 190, 0)");
+      rebote.addColorStop(1, "rgba(255, 236, 190, 0.22)");
+      pincel.fillStyle = rebote;
+      pincel.fillRect(x - 8, y + h - 14, w + 16, 20);
+
+      pincel.restore();
+
+      // ---- El contorno del cuenco ----
+      rutaCuenco();
+      pincel.strokeStyle = c.bordeOsc;
+      pincel.lineWidth = 2.5;
+      pincel.stroke();
+
+      // ---- El borde de arriba ----
+      pincel.fillStyle   = c.borde;
+      pincel.strokeStyle = c.bordeOsc;
+      pincel.lineWidth = 2.5;
+      rectRedondeado(x - 5, y - 9, w + 10, 14, 7);
+      pincel.fill();
+      pincel.stroke();
+
+      // Un brillo fino encima del borde
+      pincel.fillStyle = c.brillo;
+      rectRedondeado(x - 1, y - 7, w + 2, 3, 1.5);
+      pincel.fill();
+
+      pincel.restore();
+
+      // En 2 jugadoras, cada cesta lleva su numero encima
+      if (numJugadoras === 2) {
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+        pincel.font = "bold 15px " + FUENTE;
+        textoConBorde(String(j.numero), x + w / 2, y - 22, c.etiqueta);
+      }
+
+      pincel.globalAlpha = 1;
+    }
+
+
+    // ==========================================
+    //  28. LAS COSAS QUE CAEN
+    // ==========================================
+
+    function dibujarCosas() {
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+
+      for (const cosa of cosas) {
+
+        pincel.save();
+        pincel.translate(cosa.x, cosa.y);
+
+        // Se estira un poquito en la direccion en la que cae. Es el
+        // "squash and stretch" de siempre: da sensacion de velocidad.
+        const estiron = 1 + cosa.velocidad * 0.028;
+        pincel.scale(1 / estiron, estiron);
+
+        pincel.rotate(cosa.angulo);
+
+        if (esPremioEspecial(cosa.tipo)) {
+          pincel.shadowColor = cosa.color;
+          pincel.shadowBlur  = 16 + Math.sin(reloj / 6) * 6;
+        }
+
+        // Con AJUSTES.usarEmojis en true salen los emojis de siempre.
+        // Ponlo en false y salen las formas dibujadas a mano.
+        if (AJUSTES.usarEmojis && cosa.dibujo.emoji) {
+          pincel.font = "36px serif";
+          pincel.fillStyle = "white";
+          pincel.fillText(cosa.dibujo.emoji, 0, 0);
+        } else {
+          dibujarObjeto(cosa.dibujo, cosa.radio);
+        }
+
+        pincel.shadowBlur = 0;
+        pincel.restore();
+      }
+    }
+
+
+    // ==========================================
+    //  29. CAPAS DE ENCIMA
+    // ==========================================
+
+    function dibujarVinieta() {
+      const v = pincel.createRadialGradient(
+        pantalla.width / 2, pantalla.height / 2, 180,
+        pantalla.width / 2, pantalla.height / 2, 420
+      );
+      v.addColorStop(0, "rgba(0, 0, 0, 0)");
+      v.addColorStop(1, "rgba(0, 0, 0, 0.42)");
+      pincel.fillStyle = v;
+      pincel.fillRect(0, 0, pantalla.width, pantalla.height);
+    }
+
+
+    // ==========================================
+    //  30. EL MARCADOR (HUD)
+    // ==========================================
+
+    function barraDePoder(x, y, w, h, cuanto, color) {
+      pincel.fillStyle = "rgba(0, 0, 0, 0.45)";
+      rectRedondeado(x, y, w, h, h / 2);
+      pincel.fill();
+      if (cuanto > 0) {
+        pincel.fillStyle = color;
+        rectRedondeado(x + 2, y + 2, (w - 4) * cuanto, h - 4, (h - 4) / 2);
+        pincel.fill();
+      }
+    }
+
+    function panelJugadora(j, x, y, anchoPanel) {
+      pincel.fillStyle = "rgba(12, 16, 34, 0.45)";
+      rectRedondeado(x, y, anchoPanel, 50, 12);
+      pincel.fill();
+      pincel.strokeStyle = j.viva ? "rgba(255, 255, 255, 0.2)"
+                                  : "rgba(255, 90, 90, 0.55)";
+      pincel.lineWidth = 1.5;
+      pincel.stroke();
+
+      pincel.textAlign = "left";
+      pincel.textBaseline = "top";
+
+      pincel.font = "bold 11px " + FUENTE;
+      textoConBorde("JUG. " + j.numero, x + 10, y + 5, j.colores.etiqueta);
+      pincel.font = "bold 19px " + FUENTE;
+      textoConBorde(String(j.puntos), x + 10, y + 19);
+
+      pincel.font = "12px serif";
+      for (let i = 0; i < AJUSTES.vidasMaximas; i++) {
+        pincel.globalAlpha = (i < j.vidas) ? 1 : 0.2;
+        pincel.fillText(i < j.vidas ? "❤️" : "🖤", x + 55 + i * 14, y + 24);
+      }
+      pincel.globalAlpha = 1;
+    }
+
+    // El botoncito de salir al menu, arriba en el centro
+    function dibujarBotonSalir() {
+      const b = BOTON_SALIR;
+      pincel.fillStyle = "rgba(12, 16, 34, 0.5)";
+      rectRedondeado(b.x, b.y, b.w, b.h, 10);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(255, 255, 255, 0.28)";
+      pincel.lineWidth = 1.5;
+      pincel.stroke();
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+      pincel.font = "bold 12px " + FUENTE;
+      textoConBorde("🏠 SALIR", b.x + b.w / 2, b.y + b.h / 2 + 1, "#dfe8ff");
+    }
+
+    // El nombre del mundo, y si hay dificultad extra, tambien la velocidad
+    function textoDelMundo() {
+      let t = MUNDOS[mundoActual].icono + " " + MUNDOS[mundoActual].nombre;
+      if (nivelVelocidad > 0) {
+        t += "   ⚡x" + factorVelocidad().toFixed(1);
+      }
+      return t;
+    }
+
+    function dibujarHUD() {
+
+      dibujarBotonSalir();
+
+      if (numJugadoras === 2) {
+        panelJugadora(jugadoras[0], 10, 10, 138);
+        panelJugadora(jugadoras[1], pantalla.width - 148, 10, 138);
+
+        // Debajo del boton de salir, para no taparlo
+        pincel.textAlign = "center";
+        pincel.textBaseline = "top";
+        pincel.font = "bold 12px " + FUENTE;
+        textoConBorde(textoDelMundo(), pantalla.width / 2, 46, "#ffe9a8");
+        pincel.font = "bold 13px " + FUENTE;
+        textoConBorde("🪙 " + monedas, pantalla.width / 2, 65, "#ffd60a");
+
+      } else {
+        const j = jugadoras[0];
+
+        // ---- Panel izquierdo ----
+        pincel.fillStyle = "rgba(12, 16, 34, 0.45)";
+        rectRedondeado(10, 10, 152, 68, 12);
+        pincel.fill();
+        pincel.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        pincel.lineWidth = 1.5;
+        pincel.stroke();
+
+        pincel.textAlign = "left";
+        pincel.textBaseline = "top";
+        pincel.font = "bold 21px " + FUENTE;
+        textoConBorde(String(j.puntos), 44, 16);
+        pincel.font = "15px serif";
+        pincel.fillText("🧺", 20, 18);
+
+        pincel.font = "bold 12px " + FUENTE;
+        textoConBorde("RÉCORD " + records[modo], 20, 41, "#ffd93d");
+        textoConBorde("🪙 " + monedas, 20, 58, "#ffd60a");
+
+        // ---- Panel derecho ----
+        if (modo === "clasico") {
+          const ancho = 26 * AJUSTES.vidasMaximas + 18;
+          pincel.fillStyle = "rgba(12, 16, 34, 0.45)";
+          rectRedondeado(pantalla.width - ancho - 10, 10, ancho, 34, 12);
+          pincel.fill();
+          pincel.strokeStyle = "rgba(255, 255, 255, 0.2)";
+          pincel.stroke();
+
+          pincel.textAlign = "left";
+          pincel.font = "19px serif";
+          for (let i = 0; i < AJUSTES.vidasMaximas; i++) {
+            const px = pantalla.width - ancho + 3 + i * 26;
+            pincel.globalAlpha = (i < j.vidas) ? 1 : 0.22;
+            pincel.fillText(i < j.vidas ? "❤️" : "🖤", px, 17);
+          }
+          pincel.globalAlpha = 1;
+
+        } else {
+          const segundos = tiempoRestante / 60;
+          const pocoTiempo = segundos <= 10;
+          const latido = pocoTiempo ? (1 + Math.sin(reloj / 5) * 0.06) : 1;
+
+          pincel.save();
+          pincel.translate(pantalla.width - 66, 27);
+          pincel.scale(latido, latido);
+          pincel.translate(-(pantalla.width - 66), -27);
+
+          pincel.fillStyle = pocoTiempo ? "rgba(90, 12, 20, 0.62)"
+                                        : "rgba(12, 16, 34, 0.45)";
+          rectRedondeado(pantalla.width - 122, 10, 112, 34, 12);
+          pincel.fill();
+          pincel.strokeStyle = pocoTiempo ? "rgba(255, 120, 120, 0.6)"
+                                          : "rgba(255, 255, 255, 0.2)";
+          pincel.lineWidth = 1.5;
+          pincel.stroke();
+
+          pincel.textAlign = "left";
+          pincel.textBaseline = "top";
+          pincel.font = "15px serif";
+          pincel.fillText("⏱️", pantalla.width - 114, 16);
+          pincel.font = "bold 20px " + FUENTE;
+          textoConBorde(segundos.toFixed(1) + "s", pantalla.width - 88, 15,
+                        pocoTiempo ? "#ff8080" : "#ffffff");
+          pincel.restore();
+
+          const total = AJUSTES.segundosContrarreloj * 60;
+          pincel.fillStyle = "rgba(0, 0, 0, 0.3)";
+          pincel.fillRect(0, 0, pantalla.width, 5);
+          pincel.fillStyle = pocoTiempo ? "#ff5a5a" : "#7ee081";
+          pincel.fillRect(0, 0,
+                          pantalla.width * Math.min(tiempoRestante / total, 1), 5);
+        }
+
+        // El nombre del mundo, discreto
+        pincel.textAlign = "right";
+        pincel.textBaseline = "top";
+        pincel.font = "bold 11px " + FUENTE;
+        textoConBorde(textoDelMundo(), pantalla.width - 12, 52, "#ffe9a8");
+      }
+
+      // ---- Los poderes activos ----
+      let filaY = (numJugadoras === 2) ? 90 : 88;
+
+      for (const j of enJuego()) {
+        if (j.efectoIman <= 0) continue;
+        pincel.textAlign = "left";
+        pincel.textBaseline = "middle";
+        pincel.font = "15px serif";
+        pincel.fillText("🧲", 14, filaY + 6);
+        const maximo = AJUSTES.duracionIman + mejoras.iman * 120;
+        barraDePoder(36, filaY, 84, 11, j.efectoIman / maximo, "#c99bff");
+        if (numJugadoras === 2) {
+          pincel.font = "bold 11px " + FUENTE;
+          textoConBorde("J" + j.numero, 126, filaY + 6, j.colores.etiqueta);
+        }
+        filaY += 20;
+      }
+    }
+
+
+    // ==========================================
+    //  31. EL MENU PRINCIPAL
+    // ==========================================
+
+    function dibujarBotonModo(boton) {
+      const elegido = (modo === boton.modo);
+      const escala = elegido ? (1.05 + Math.sin(reloj / 18) * 0.015) : 1;
+      const cx = boton.x + boton.w / 2;
+      const cy = boton.y + boton.h / 2;
+
+      pincel.save();
+      pincel.translate(cx, cy);
+      pincel.scale(escala, escala);
+      pincel.translate(-cx, -cy);
+
+      pincel.fillStyle = elegido ? "rgba(255, 217, 61, 0.20)"
+                                 : "rgba(8, 12, 30, 0.55)";
+      rectRedondeado(boton.x, boton.y, boton.w, boton.h, 13);
+      pincel.fill();
+      pincel.strokeStyle = elegido ? "#ffd93d" : "rgba(255, 255, 255, 0.22)";
+      pincel.lineWidth = elegido ? 3 : 1.5;
+      pincel.stroke();
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+
+      pincel.font = "20px serif";
+      pincel.fillStyle = "white";
+      pincel.fillText(boton.icono, cx, boton.y + 18);
+
+      pincel.font = "bold 14px " + FUENTE;
+      textoConBorde(boton.titulo, cx, boton.y + 41,
+                    elegido ? "#ffd93d" : "#dfe8ff");
+      pincel.font = "11px " + FUENTE;
+      textoConBorde(boton.abajo, cx, boton.y + 57, "#c3d0ea");
+
+      pincel.restore();
+    }
+
+    function dibujarPantallaInicio() {
+
+      dibujarFondo(paletaDelMenu());
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "alphabetic";
+      pincel.font = "46px serif";
+      pincel.fillText("🧺", pantalla.width / 2, SUELO_Y + 2);
+      pincel.textBaseline = "middle";
+
+      // --- LA FIRMA, en lo alto del juego ---
+      // Los espacios entre las letras estan escritos a mano porque el
+      // canvas no tiene "letter-spacing" como el CSS.
+      pincel.font = "bold 13px " + FUENTE;
+      textoConBorde("H E C H O   P O R   E M M A   P",
+                    pantalla.width / 2, 28, "#ffd93d");
+
+      const vaiven = Math.sin(reloj / 30) * 6;
+      pincel.font = "24px serif";
+      pincel.fillText("🍓  ⭐  🧲  🪙  💖  🌊", pantalla.width / 2, 68 + vaiven);
+
+      pincel.font = "bold 36px " + FUENTE;
+      textoConBorde("ATRAPA",     pantalla.width / 2, 122);
+      textoConBorde("LAS FRUTAS", pantalla.width / 2, 160);
+
+      pincel.font = "bold 11px " + FUENTE;
+      textoConBorde("E L I G E   M O D O", pantalla.width / 2, 198, "#c3d0ea");
+
+      for (const b of BOTONES_MODO) dibujarBotonModo(b);
+
+      const cx = pantalla.width / 2;
+
+      // --- Boton de la tienda ---
+      let b = BOTON_TIENDA;
+      pincel.fillStyle = "rgba(255, 214, 10, 0.16)";
+      rectRedondeado(b.x, b.y, b.w, b.h, 12);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(255, 214, 10, 0.75)";
+      pincel.lineWidth = 2;
+      pincel.stroke();
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+      pincel.font = "bold 15px " + FUENTE;
+      textoConBorde("🛒 TIENDA · 🪙" + monedas,
+                    b.x + b.w / 2, b.y + b.h / 2, "#ffd60a");
+
+      // --- Boton de como jugar ---
+      b = BOTON_AYUDA;
+      pincel.fillStyle = "rgba(139, 200, 255, 0.14)";
+      rectRedondeado(b.x, b.y, b.w, b.h, 12);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(139, 200, 255, 0.7)";
+      pincel.lineWidth = 2;
+      pincel.stroke();
+      pincel.font = "bold 15px " + FUENTE;
+      textoConBorde("❓ CÓMO JUGAR", b.x + b.w / 2, b.y + b.h / 2, "#a8dcff");
+
+      // --- La cesta que llevas puesta ---
+      pincel.font = "11px " + FUENTE;
+      textoConBorde("tu cesta:", cx - 44, 372, "#9fb0d0");
+      dibujarCesta({
+        x: cx + 2, y: 364, ancho: 42, alto: 17,
+        rebote: 0, inclinacion: 0,
+        colores: cestaPorClave(cestaElegida).colores, viva: true, numero: 0
+      });
+
+      if (records[modo] > 0) {
+        pincel.font = "bold 17px " + FUENTE;
+        textoConBorde("🏆 Récord: " + records[modo], cx, 414, "#ffd93d");
+      }
+
+      if (reloj % 70 < 45) {
+        pincel.font = "bold 17px " + FUENTE;
+        textoConBorde("PULSA ESPACIO O TOCA UN MODO", cx, 452, "#ffd93d");
+      }
+
+      pincel.font = "11px " + FUENTE;
+      textoConBorde("T tienda   ·   H cómo jugar   ·   M música",
+                    cx, 482, "#9fb0d0");
+
+      dibujarVinieta();
+    }
+
+
+    // ==========================================
+    //  32. LA TIENDA (pantalla)
+    // ==========================================
+
+    // ==========================================
+    //  LA PANTALLA DE "COMO JUGAR"
+    // ==========================================
+    // La tabla de que hace cada cosa es una LISTA. Si algun dia anades
+    // un premio nuevo, lo pones aqui y la pantalla crece sola.
+
+    const AYUDA_COSAS = [
+      { icono: "🍎", nombre: "Lo que cae del mundo", valor: "+1 punto",
+        color: "#ffffff" },
+      { icono: "⭐", nombre: "Estrella dorada",      valor: "+5 puntos",
+        color: "#ffd93d" },
+      { icono: "💖", nombre: "Corazón",              valor: "+1 vida  ·  +5s",
+        color: "#ff8fb1" },
+      { icono: "🧲", nombre: "Imán",                 valor: "atrae 5 seg",
+        color: "#c99bff" },
+      { icono: "🪙", nombre: "Moneda",               valor: "para la tienda",
+        color: "#ffd60a" },
+      { icono: "💣", nombre: "Bomba",                valor: "¡NO la cojas!",
+        color: "#ff7a6a" }
+    ];
+
+    const AYUDA_TRUCOS = [
+      "Las bombas que se caen solas NO te quitan nada",
+      "Cada " + 30 + " puntos cambias de mundo, y hay 7",
+      "Cada 20 puntos todo cae más rápido (te aviso)",
+      "Se hace de noche y vuelve a amanecer solo"
+    ];
+
+    function dibujarAyuda() {
+      dibujarFondo(paletaDelMenu());
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+
+      pincel.font = "bold 28px " + FUENTE;
+      textoConBorde("❓  CÓMO JUGAR", pantalla.width / 2, 36);
+
+      // ---- Los controles ----
+      pincel.fillStyle = "rgba(8, 12, 30, 0.58)";
+      rectRedondeado(26, 58, pantalla.width - 52, 52, 12);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      pincel.lineWidth = 1.5;
+      pincel.stroke();
+
+      pincel.font = "13px " + FUENTE;
+      textoConBorde("Jugadora 1:  ←  →        Jugadora 2:  A  y  D",
+                    pantalla.width / 2, 76, "#e6eeff");
+      textoConBorde("o arrastra con el dedo / el ratón",
+                    pantalla.width / 2, 95, "#c3d0ea");
+
+      // ---- Que cae del cielo ----
+      pincel.font = "bold 11px " + FUENTE;
+      textoConBorde("Q U É   C A E   D E L   C I E L O",
+                    pantalla.width / 2, 126, "#c3d0ea");
+
+      pincel.fillStyle = "rgba(8, 12, 30, 0.58)";
+      rectRedondeado(26, 138, pantalla.width - 52, 170, 12);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      pincel.stroke();
+
+      for (let i = 0; i < AYUDA_COSAS.length; i++) {
+        const c = AYUDA_COSAS[i];
+        const y = 158 + i * 27;
+
+        pincel.textAlign = "left";
+        pincel.font = "19px serif";
+        pincel.fillStyle = "white";
+        pincel.fillText(c.icono, 44, y);
+
+        pincel.font = "bold 13px " + FUENTE;
+        textoConBorde(c.nombre, 76, y, "#e6eeff");
+
+        pincel.textAlign = "right";
+        pincel.font = "bold 13px " + FUENTE;
+        textoConBorde(c.valor, pantalla.width - 44, y, c.color);
+      }
+
+      // ---- Los siete mundos ----
+      pincel.textAlign = "center";
+      pincel.font = "bold 11px " + FUENTE;
+      textoConBorde("L O S   S I E T E   M U N D O S",
+                    pantalla.width / 2, 326, "#c3d0ea");
+
+      let iconos = "";
+      for (const m of MUNDOS) iconos += m.icono + "  ";
+      pincel.font = "22px serif";
+      pincel.fillStyle = "white";
+      pincel.fillText(iconos.trim(), pantalla.width / 2, 352);
+
+      // ---- Trucos ----
+      pincel.font = "bold 11px " + FUENTE;
+      textoConBorde("T R U C O S", pantalla.width / 2, 382, "#c3d0ea");
+
+      pincel.font = "12px " + FUENTE;
+      for (let i = 0; i < AYUDA_TRUCOS.length; i++) {
+        textoConBorde("· " + AYUDA_TRUCOS[i],
+                      pantalla.width / 2, 402 + i * 20, "#e6eeff");
+      }
+
+      // ---- Las teclas ----
+      pincel.font = "bold 12px " + FUENTE;
+      textoConBorde("P pausa   ·   M música   ·   T tienda   ·   ESC salir",
+                    pantalla.width / 2, 492, "#ffd93d");
+
+      // ---- Boton de volver ----
+      const b = { x: 150, y: 516, w: 180, h: 38 };
+      pincel.fillStyle = "rgba(8, 12, 30, 0.65)";
+      rectRedondeado(b.x, b.y, b.w, b.h, 12);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      pincel.lineWidth = 2;
+      pincel.stroke();
+      pincel.font = "bold 15px " + FUENTE;
+      textoConBorde("VOLVER", b.x + b.w / 2, b.y + b.h / 2);
+
+      pincel.font = "11px " + FUENTE;
+      textoConBorde("toca donde quieras para volver",
+                    pantalla.width / 2, 572, "#9fb0d0");
+
+      dibujarVinieta();
+    }
+
+
+    function dibujarTienda() {
+      dibujarFondo(paletaDelMenu());
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+
+      pincel.font = "bold 28px " + FUENTE;
+      textoConBorde("🛒  TIENDA", pantalla.width / 2, 36);
+
+      pincel.font = "bold 17px " + FUENTE;
+      textoConBorde("Tienes 🪙 " + monedas, pantalla.width / 2, 68, "#ffd60a");
+
+      // Cada mejora se dibuja SOLA a partir de la lista MEJORAS
+      for (let i = 0; i < MEJORAS.length; i++) {
+        const m = MEJORAS[i];
+        const caja = cajaFilaTienda(i);
+        const nivel = mejoras[m.clave];
+        const precio = precioDe(m);
+        const alMaximo = (precio === null);
+        const puedes = !alMaximo && monedas >= precio;
+        const elegida = (i === filaTienda);
+
+        pincel.fillStyle = elegida ? "rgba(255, 217, 61, 0.15)"
+                                   : "rgba(8, 12, 30, 0.55)";
+        rectRedondeado(caja.x, caja.y, caja.w, caja.h, 12);
+        pincel.fill();
+        pincel.strokeStyle = elegida ? "#ffd93d" : "rgba(255, 255, 255, 0.18)";
+        pincel.lineWidth = elegida ? 2.5 : 1.5;
+        pincel.stroke();
+
+        pincel.textAlign = "left";
+        pincel.textBaseline = "middle";
+
+        pincel.font = "22px serif";
+        pincel.fillStyle = "white";
+        pincel.fillText(m.icono, caja.x + 12, caja.y + 27);
+
+        pincel.font = "bold 15px " + FUENTE;
+        textoConBorde(m.nombre, caja.x + 48, caja.y + 15);
+
+        pincel.font = "11px " + FUENTE;
+        textoConBorde(m.efecto, caja.x + 48, caja.y + 31, "#c3d0ea");
+
+        // Los niveles, como bolitas llenas y vacias
+        let bolitas = "";
+        for (let n = 0; n < m.max; n++) bolitas += (n < nivel) ? "● " : "○ ";
+        pincel.font = "12px " + FUENTE;
+        textoConBorde(bolitas.trim(), caja.x + 48, caja.y + 45, "#ffd93d");
+
+        // El precio, a la derecha
+        pincel.textAlign = "right";
+        pincel.font = "bold 15px " + FUENTE;
+        if (alMaximo) {
+          textoConBorde("MÁXIMO", caja.x + caja.w - 14, caja.y + 27, "#8ac926");
+        } else {
+          textoConBorde("🪙 " + precio, caja.x + caja.w - 14, caja.y + 27,
+                        puedes ? "#ffd60a" : "#ff8080");
+        }
+      }
+
+      // ---- La fila de las cestas ----
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+      pincel.font = "bold 12px " + FUENTE;
+      textoConBorde("T U S   C E S T A S", pantalla.width / 2, 372, "#c3d0ea");
+
+      const filaCestasElegida = (filaTienda === MEJORAS.length);
+
+      for (let i = 0; i < CESTAS.length; i++) {
+        const cesta  = CESTAS[i];
+        const caja   = cajaCesta(i);
+        const laTengo = cestasCompradas.indexOf(cesta.clave) >= 0;
+        const puesta  = (cestaElegida === cesta.clave);
+        const cursor  = filaCestasElegida && (i === cursorCesta);
+
+        // El fondo del cuadradito
+        pincel.fillStyle = puesta ? "rgba(126, 224, 129, 0.20)"
+                                  : "rgba(8, 12, 30, 0.55)";
+        rectRedondeado(caja.x, caja.y, caja.w, caja.h, 11);
+        pincel.fill();
+        pincel.strokeStyle = puesta ? "#7ee081"
+                           : cursor ? "#ffd93d"
+                                    : "rgba(255, 255, 255, 0.18)";
+        pincel.lineWidth = (puesta || cursor) ? 2.5 : 1.5;
+        pincel.stroke();
+
+        // La cesta en miniatura: MISMA funcion que la del juego,
+        // solo que le pasamos una jugadora de mentira mas pequena
+        pincel.save();
+        pincel.globalAlpha = laTengo ? 1 : 0.35;
+        dibujarCesta({
+          x: caja.x + 9, y: caja.y + 20,
+          ancho: 40, alto: 16,
+          rebote: 0, inclinacion: 0,
+          colores: cesta.colores, viva: true, numero: 0
+        });
+        pincel.restore();
+
+        // Debajo: el precio, o un check si ya la llevas
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+        pincel.font = "bold 11px " + FUENTE;
+        const cx = caja.x + caja.w / 2;
+
+        if (puesta) {
+          textoConBorde("PUESTA", cx, caja.y + 50, "#7ee081");
+        } else if (laTengo) {
+          textoConBorde("tocar", cx, caja.y + 50, "#c3d0ea");
+        } else {
+          textoConBorde("🪙" + cesta.precio, cx, caja.y + 50,
+                        monedas >= cesta.precio ? "#ffd60a" : "#ff8080");
+        }
+      }
+
+      // El mensaje de "comprado" o "te faltan monedas"
+      if (mensajeTiendaTiempo > 0) {
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+        pincel.font = "bold 15px " + FUENTE;
+        textoConBorde(mensajeTienda, pantalla.width / 2, 470, "#ffffff");
+      }
+
+      // Boton de volver
+      const b = BOTON_VOLVER;
+      pincel.fillStyle = "rgba(8, 12, 30, 0.65)";
+      rectRedondeado(b.x, b.y, b.w, b.h, 12);
+      pincel.fill();
+      pincel.strokeStyle = "rgba(255, 255, 255, 0.35)";
+      pincel.lineWidth = 2;
+      pincel.stroke();
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+      pincel.font = "bold 15px " + FUENTE;
+      textoConBorde("VOLVER  (T)", b.x + b.w / 2, b.y + b.h / 2);
+
+      pincel.font = "11px " + FUENTE;
+      textoConBorde("↑ ↓ elegir  ·  ← → cestas  ·  ESPACIO comprar  ·  o toca",
+                    pantalla.width / 2, 546, "#c3d0ea");
+
+      dibujarVinieta();
+    }
+
+
+    // ==========================================
+    //  33. DIBUJAR (render)
+    // ==========================================
+
+    function dibujar() {
+      pincel.clearRect(0, 0, pantalla.width, pantalla.height);
+
+      if (estado === "inicio") { dibujarPantallaInicio(); return; }
+      if (estado === "tienda") { dibujarTienda();         return; }
+      if (estado === "ayuda")  { dibujarAyuda();          return; }
+
+      dibujarFondo(paletaActual());
+
+      // ---------- EL MUNDO (esto SI tiembla) ----------
+      pincel.save();
+      if (sacudida > 0) {
+        pincel.translate((Math.random() - 0.5) * sacudida,
+                         (Math.random() - 0.5) * sacudida);
+      }
+
+      dibujarSombras();
+      dibujarAuras();
+      for (const j of enJuego()) dibujarCesta(j);
+      dibujarCosas();
+
+      for (const p of particulas) {
+        pincel.globalAlpha = p.vida;
+        pincel.fillStyle = p.color;
+        circulo(p.x, p.y, p.tamano);
+      }
+      pincel.globalAlpha = 1;
+
+      pincel.textAlign = "center";
+      pincel.textBaseline = "middle";
+      pincel.font = "bold 20px " + FUENTE;
+      for (const a of avisos) {
+        pincel.globalAlpha = a.vida;
+        textoConBorde(a.texto, a.x, a.y, a.color);
+      }
+      pincel.globalAlpha = 1;
+
+      pincel.restore();
+      // ---------- FIN DEL MUNDO QUE TIEMBLA ----------
+
+      if (flash > 0) {
+        pincel.fillStyle = "rgba(255, 40, 40, " + (flash * 0.38) + ")";
+        pincel.fillRect(0, 0, pantalla.width, pantalla.height);
+      }
+
+      dibujarVinieta();
+      dibujarHUD();
+
+      // ---------- CARTEL DE MUNDO NUEVO ----------
+      if (cartelMundo > 0) {
+        const m = MUNDOS[mundoActual];
+
+        // Entra y sale desvaneciendose
+        let visible = 1;
+        if (cartelMundo > 150) visible = (170 - cartelMundo) / 20;
+        if (cartelMundo < 40)  visible = cartelMundo / 40;
+
+        pincel.globalAlpha = visible;
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+
+        pincel.font = "46px serif";
+        pincel.fillStyle = "white";
+        pincel.fillText(m.icono, pantalla.width / 2, 205);
+
+        pincel.font = "bold 13px " + FUENTE;
+        textoConBorde("NUEVO MUNDO", pantalla.width / 2, 248, "#ffe9a8");
+        pincel.font = "bold 28px " + FUENTE;
+        textoConBorde(m.nombre, pantalla.width / 2, 280, "#ffd93d");
+
+        pincel.globalAlpha = 1;
+      }
+
+      // ---------- AVISO DE MAS VELOCIDAD ----------
+      // Va en su propia franja de la pantalla (arriba, sobre y=150) para
+      // que pueda salir a la vez que el cartel del mundo sin taparse.
+      if (cartelVelocidad > 0 && cartelVelocidad % 22 < 14) {
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+        pincel.font = "bold 26px " + FUENTE;
+        textoConBorde("⚡ ¡MÁS RÁPIDO! ⚡", pantalla.width / 2, 140, "#ffd93d");
+        pincel.font = "bold 15px " + FUENTE;
+        textoConBorde("velocidad x" + factorVelocidad().toFixed(1),
+                      pantalla.width / 2, 168, "#ffe9a8");
+      }
+
+      // ---------- AVISO DE BOMBAS ----------
+      if (bombasActivadas > 0 && bombasActivadas % 24 < 15 && cartelMundo <= 0) {
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+        pincel.font = "bold 32px " + FUENTE;
+        textoConBorde("¡CUIDADO!", pantalla.width / 2, 350, "#ff5a5a");
+        pincel.font = "bold 18px " + FUENTE;
+        textoConBorde("Han aparecido bombas 💣", pantalla.width / 2, 384, "#ffc9c9");
+        pincel.font = "bold 15px " + FUENTE;
+        textoConBorde("¡NO las atrapes, déjalas caer!",
+                      pantalla.width / 2, 410, "#ffc9c9");
+      }
+
+      // ---------- PAUSA ----------
+      if (estado === "pausa") {
+        pincel.fillStyle = "rgba(8, 10, 28, 0.78)";
+        pincel.fillRect(0, 0, pantalla.width, pantalla.height);
+
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+
+        pincel.font = "bold 44px " + FUENTE;
+        textoConBorde("PAUSA", pantalla.width / 2, 232);
+
+        pincel.font = "16px " + FUENTE;
+        textoConBorde("Llevas " + puntosLider() + " puntos",
+                      pantalla.width / 2, 278, "#d8e6ff");
+
+        // --- Boton SEGUIR ---
+        let b = BOTON_SEGUIR;
+        pincel.fillStyle = "rgba(126, 224, 129, 0.18)";
+        rectRedondeado(b.x, b.y, b.w, b.h, 13);
+        pincel.fill();
+        pincel.strokeStyle = "rgba(126, 224, 129, 0.8)";
+        pincel.lineWidth = 2.5;
+        pincel.stroke();
+        pincel.font = "bold 18px " + FUENTE;
+        textoConBorde("▶  SEGUIR JUGANDO", b.x + b.w / 2, b.y + b.h / 2, "#a8f0aa");
+
+        // --- Boton MENU PRINCIPAL ---
+        b = BOTON_ALMENU;
+        pincel.fillStyle = "rgba(255, 214, 10, 0.14)";
+        rectRedondeado(b.x, b.y, b.w, b.h, 13);
+        pincel.fill();
+        pincel.strokeStyle = "rgba(255, 214, 10, 0.75)";
+        pincel.lineWidth = 2.5;
+        pincel.stroke();
+        pincel.font = "bold 18px " + FUENTE;
+        textoConBorde("🏠  MENÚ PRINCIPAL", b.x + b.w / 2, b.y + b.h / 2, "#ffd60a");
+
+        pincel.font = "12px " + FUENTE;
+        textoConBorde("P para seguir   ·   ESC para salir al menú",
+                      pantalla.width / 2, 452, "#9fb0d0");
+      }
+
+      // ---------- FIN DE PARTIDA ----------
+      if (estado === "perdido") {
+        pincel.fillStyle = "rgba(0, 0, 0, 0.74)";
+        pincel.fillRect(0, 0, pantalla.width, pantalla.height);
+
+        pincel.textAlign = "center";
+        pincel.textBaseline = "middle";
+
+        pincel.font = "bold 40px " + FUENTE;
+        if (modo === "contrarreloj") {
+          textoConBorde("¡TIEMPO!", pantalla.width / 2, 172, "#ffd93d");
+        } else {
+          textoConBorde("GAME OVER", pantalla.width / 2, 172);
+        }
+
+        if (numJugadoras === 2) {
+          const p1 = jugadoras[0].puntos;
+          const p2 = jugadoras[1].puntos;
+
+          pincel.font = "bold 24px " + FUENTE;
+          if (p1 > p2) {
+            textoConBorde("🏅 ¡GANA LA JUGADORA 1!", pantalla.width / 2, 226,
+                          jugadoras[0].colores.etiqueta);
+          } else if (p2 > p1) {
+            textoConBorde("🏅 ¡GANA LA JUGADORA 2!", pantalla.width / 2, 226,
+                          jugadoras[1].colores.etiqueta);
+          } else {
+            textoConBorde("🤝 ¡EMPATE!", pantalla.width / 2, 226, "#ffffff");
+          }
+
+          pincel.font = "bold 20px " + FUENTE;
+          textoConBorde("Jugadora 1:  " + p1, pantalla.width / 2, 272,
+                        jugadoras[0].colores.etiqueta);
+          textoConBorde("Jugadora 2:  " + p2, pantalla.width / 2, 302,
+                        jugadoras[1].colores.etiqueta);
+
+        } else {
+          pincel.font = "bold 28px " + FUENTE;
+          textoConBorde("Puntuación: " + jugadoras[0].puntos,
+                        pantalla.width / 2, 232);
+          pincel.font = "13px " + FUENTE;
+          textoConBorde("llegaste a " + MUNDOS[mundoActual].icono + " " +
+                        MUNDOS[mundoActual].nombre,
+                        pantalla.width / 2, 264, "#b9c6e0");
+        }
+
+        // Las monedas ganadas
+        pincel.font = "bold 17px " + FUENTE;
+        textoConBorde("🪙 +" + monedasGanadas + "   (tienes " + monedas + ")",
+                      pantalla.width / 2, 344, "#ffd60a");
+
+        if (nuevoRecord) {
+          const latido = 1 + Math.sin(reloj / 7) * 0.09;
+          pincel.save();
+          pincel.translate(pantalla.width / 2, 384);
+          pincel.scale(latido, latido);
+          pincel.font = "bold 26px " + FUENTE;
+          textoConBorde("🏆 ¡NUEVO RÉCORD! 🏆", 0, 0, "#ffd93d");
+          pincel.restore();
+        } else {
+          pincel.font = "bold 20px " + FUENTE;
+          textoConBorde("🏆 Récord: " + records[modo],
+                        pantalla.width / 2, 384, "#ffd93d");
+        }
+
+        if (reloj % 70 < 45) {
+          pincel.font = "bold 17px " + FUENTE;
+          textoConBorde("PULSA ESPACIO O TOCA AQUÍ", pantalla.width / 2, 432);
+        }
+      }
+    }
+
+
+    // ==========================================
+    //  34. EL BUCLE DE JUEGO (paso fijo)
+    // ==========================================
+
+    const PASO = 1000 / 60;
+
+    let tiempoAnterior  = 0;
+    let tiempoAcumulado = 0;
+
+    function bucle(ahora) {
+      requestAnimationFrame(bucle);
+
+      if (tiempoAnterior === 0) tiempoAnterior = ahora;
+      let transcurrido = ahora - tiempoAnterior;
+      tiempoAnterior = ahora;
+
+      if (transcurrido > 250) transcurrido = 250;
+      tiempoAcumulado += transcurrido;
+
+      let vueltas = 0;
+      while (tiempoAcumulado >= PASO && vueltas < 5) {
+        reloj++;
+        actualizar();
+        actualizarEfectos();
+        sonarMusica();
+        tiempoAcumulado -= PASO;
+        vueltas++;
+      }
+
+      dibujar();
+    }
+
+    requestAnimationFrame(bucle);
+  </script>
+
+</body>
+</html>
